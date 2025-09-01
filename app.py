@@ -5,6 +5,8 @@ import numpy as np
 import plotly.graph_objects as go
 import plotly.express as px
 from pathlib import Path
+from datetime import datetime, timedelta
+import re
 from calculate_utility_bill import calculate_utility_costs_for_app, InvalidTariffError, InvalidLoadProfileError
 
 
@@ -576,6 +578,143 @@ class TariffViewer:
         else:
             # Non-consecutive, list them
             return ", ".join(months)
+
+def generate_load_profile(tariff, avg_load, load_factor, tou_percentages, year, 
+                         seasonal_variation=0.1, weekend_factor=0.8, 
+                         daily_variation=0.15, noise_level=0.05):
+    """Generate a synthetic load profile with specified characteristics
+    
+    Parameters:
+    -----------
+    tariff : dict
+        The tariff data containing TOU schedules
+    avg_load : float
+        Average load in kW across the year
+    load_factor : float
+        Load factor (average/peak ratio)
+    tou_percentages : dict
+        Percentage of energy in each TOU period
+    year : int
+        Year for the timestamps
+    seasonal_variation : float
+        Seasonal variation factor (0-0.5)
+    weekend_factor : float
+        Weekend load as fraction of weekday (0.1-1.5)
+    daily_variation : float
+        Daily variation factor (0-0.3)
+    noise_level : float
+        Random noise level (0-0.2)
+        
+    Returns:
+    --------
+    pd.DataFrame
+        Load profile with timestamp, load_kW, kWh, month, energy_period columns
+    """
+    
+    # Create 15-minute intervals for the entire year
+    start_date = datetime(year, 1, 1)
+    end_date = datetime(year + 1, 1, 1)
+    timestamps = []
+    current = start_date
+    while current < end_date:
+        timestamps.append(current)
+        current += timedelta(minutes=15)
+    
+    df = pd.DataFrame({'timestamp': timestamps})
+    df['month'] = df['timestamp'].dt.month
+    df['hour'] = df['timestamp'].dt.hour
+    df['weekday'] = df['timestamp'].dt.weekday
+    df['is_weekend'] = df['weekday'] >= 5
+    
+    # Calculate peak load from average and load factor
+    peak_load = avg_load / load_factor
+    
+    # Get TOU schedules from tariff
+    weekday_schedule = tariff.get('energyweekdayschedule', [])
+    weekend_schedule = tariff.get('energyweekendschedule', [])
+    
+    # Assign TOU periods
+    energy_periods = []
+    for _, row in df.iterrows():
+        month_idx = row['month'] - 1
+        hour = row['hour']
+        
+        if row['is_weekend'] and weekend_schedule and month_idx < len(weekend_schedule):
+            if hour < len(weekend_schedule[month_idx]):
+                period = weekend_schedule[month_idx][hour]
+            else:
+                period = 0
+        elif weekday_schedule and month_idx < len(weekday_schedule):
+            if hour < len(weekday_schedule[month_idx]):
+                period = weekday_schedule[month_idx][hour]
+            else:
+                period = 0
+        else:
+            period = 0
+            
+        energy_periods.append(int(period))
+    
+    df['energy_period'] = energy_periods
+    
+    # Create base load profile with seasonal variation
+    seasonal_multiplier = 1 + seasonal_variation * np.sin(2 * np.pi * (df['month'] - 1) / 12)
+    
+    # Weekend factor
+    weekend_multiplier = np.where(df['is_weekend'], weekend_factor, 1.0)
+    
+    # Daily variation (higher during certain hours)
+    daily_multiplier = 1 + daily_variation * np.sin(2 * np.pi * df['hour'] / 24)
+    
+    # Random noise
+    np.random.seed(42)  # For reproducibility
+    noise = 1 + noise_level * np.random.normal(0, 1, len(df))
+    
+    # Calculate target energy for each TOU period
+    total_annual_kwh = avg_load * 8760  # kW * hours in year
+    target_energy_by_period = {}
+    
+    for period, percentage in tou_percentages.items():
+        target_energy_by_period[period] = total_annual_kwh * (percentage / 100.0)
+    
+    # Initialize load array
+    load_kw = np.full(len(df), avg_load)
+    
+    # Apply multipliers
+    load_kw *= seasonal_multiplier * weekend_multiplier * daily_multiplier * noise
+    
+    # Adjust to meet TOU energy targets
+    for period in tou_percentages.keys():
+        period_mask = df['energy_period'] == period
+        if period_mask.sum() > 0:
+            current_energy = (load_kw[period_mask] * 0.25).sum()  # 15-min intervals = 0.25 hours
+            target_energy = target_energy_by_period[period]
+            
+            if current_energy > 0:
+                adjustment_factor = target_energy / current_energy
+                load_kw[period_mask] *= adjustment_factor
+    
+    # Scale to meet overall average load target
+    actual_avg = load_kw.mean()
+    if actual_avg > 0:
+        load_kw *= (avg_load / actual_avg)
+    
+    # Apply load factor constraint by scaling peaks
+    actual_peak = load_kw.max()
+    target_peak = avg_load / load_factor
+    
+    if actual_peak > target_peak:
+        # Compress peaks to meet load factor
+        excess_mask = load_kw > target_peak
+        load_kw[excess_mask] = target_peak + (load_kw[excess_mask] - target_peak) * 0.1
+    
+    # Ensure non-negative loads
+    load_kw = np.maximum(load_kw, 0)
+    
+    # Calculate kWh for 15-minute intervals
+    df['load_kW'] = load_kw
+    df['kWh'] = df['load_kW'] * 0.25  # 15 minutes = 0.25 hours
+    
+    return df[['timestamp', 'load_kW', 'kWh', 'month', 'energy_period']]
 
 def main():
     st.set_page_config(
@@ -1528,7 +1667,7 @@ def main():
     st.markdown('<hr class="custom-divider">', unsafe_allow_html=True)
     
     # Create tabs for energy and demand rates with modern styling
-    tab1, tab2, tab3, tab4, tab5 = st.tabs(["⚡ Energy Rates", "🔌 Demand Rates", "📊 Flat Demand", "📈 Combined View", "💰 Utility Cost Calculator"])
+    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["⚡ Energy Rates", "🔌 Demand Rates", "📊 Flat Demand", "📈 Combined View", "💰 Utility Cost Calculator", "🔧 Load Profile Generator"])
     
     with tab1:
         st.markdown("### ⚡ Energy Rate Structure")
@@ -1879,6 +2018,271 @@ def main():
                 except Exception as e:
                     st.error(f"❌ Calculation error: {str(e)}")
                     st.exception(e)
+                    
+    with tab6:
+        st.markdown("### 🔧 Load Profile Generator")
+        st.markdown("Create custom load profiles with specified characteristics and TOU energy distribution.")
+        
+        # Load profile parameters
+        st.markdown("#### ⚙️ Load Profile Parameters")
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            avg_load = st.number_input(
+                "Average Load (kW)", 
+                min_value=0.1, 
+                max_value=10000.0, 
+                value=100.0, 
+                step=1.0,
+                help="The average load across the entire year"
+            )
+            
+            load_factor = st.slider(
+                "Load Factor", 
+                min_value=0.1, 
+                max_value=1.0, 
+                value=0.6, 
+                step=0.01,
+                help="Ratio of average load to peak load (0.1 = highly variable, 1.0 = constant load)"
+            )
+        
+        with col2:
+            profile_name = st.text_input(
+                "Load Profile Name",
+                value="Custom_Load_Profile",
+                help="Name for the load profile file (will be saved as CSV)"
+            )
+            
+            year = st.selectbox(
+                "Year",
+                options=list(range(2024, 2031)),
+                index=1,  # Default to 2025
+                help="Year for the load profile timestamps"
+            )
+        
+        # TOU Energy Distribution
+        st.markdown("#### 📊 Energy Distribution by TOU Period")
+        st.markdown("Specify what percentage of total annual energy falls into each TOU period for the selected tariff.")
+        
+        # Get TOU periods from current tariff
+        energy_labels = viewer.tariff.get('energytoulabels', [])
+        energy_rates = viewer.tariff.get('energyratestructure', [])
+        
+        if not energy_rates:
+            st.error("❌ The selected tariff does not have energy rate structure. Please select a different tariff.")
+        else:
+            # Create TOU period inputs
+            tou_percentages = {}
+            total_percentage = 0
+            
+            st.markdown("##### Weekday Energy Distribution")
+            weekday_cols = st.columns(min(len(energy_rates), 4))
+            
+            for i, rate_structure in enumerate(energy_rates):
+                col_idx = i % len(weekday_cols)
+                with weekday_cols[col_idx]:
+                    if energy_labels and i < len(energy_labels):
+                        period_name = energy_labels[i]
+                    else:
+                        period_name = f"Period {i}"
+                    
+                    # Get the rate for display
+                    rate = rate_structure[0].get('rate', 0) if rate_structure else 0
+                    adj = rate_structure[0].get('adj', 0) if rate_structure else 0
+                    total_rate = rate + adj
+                    
+                    percentage = st.number_input(
+                        f"{period_name}\n(${total_rate:.4f}/kWh)",
+                        min_value=0.0,
+                        max_value=100.0,
+                        value=100.0 / len(energy_rates),  # Equal distribution by default
+                        step=0.1,
+                        key=f"tou_pct_{i}",
+                        help=f"Percentage of annual energy in {period_name}"
+                    )
+                    tou_percentages[i] = percentage
+                    total_percentage += percentage
+            
+            # Show total percentage
+            if abs(total_percentage - 100.0) > 0.1:
+                st.warning(f"⚠️ Total percentage is {total_percentage:.1f}%. It should equal 100%.")
+            else:
+                st.success(f"✅ Total percentage: {total_percentage:.1f}%")
+            
+            # Advanced options
+            with st.expander("🔧 Advanced Options"):
+                col1, col2 = st.columns(2)
+                with col1:
+                    seasonal_variation = st.slider(
+                        "Seasonal Variation",
+                        min_value=0.0,
+                        max_value=0.5,
+                        value=0.1,
+                        step=0.01,
+                        help="How much the load varies seasonally (0 = no variation, 0.5 = ±50% variation)"
+                    )
+                    
+                    weekend_factor = st.slider(
+                        "Weekend Load Factor",
+                        min_value=0.1,
+                        max_value=1.5,
+                        value=0.8,
+                        step=0.01,
+                        help="Weekend load as a fraction of weekday load"
+                    )
+                
+                with col2:
+                    daily_variation = st.slider(
+                        "Daily Variation",
+                        min_value=0.0,
+                        max_value=0.3,
+                        value=0.15,
+                        step=0.01,
+                        help="How much the load varies within each day"
+                    )
+                    
+                    noise_level = st.slider(
+                        "Random Noise Level",
+                        min_value=0.0,
+                        max_value=0.2,
+                        value=0.05,
+                        step=0.01,
+                        help="Amount of random variation in the load profile"
+                    )
+            
+            # Generate button
+            if st.button("🚀 Generate Load Profile", type="primary"):
+                if abs(total_percentage - 100.0) > 0.1:
+                    st.error("❌ Please ensure TOU percentages sum to 100% before generating.")
+                elif not profile_name.strip():
+                    st.error("❌ Please provide a name for the load profile.")
+                else:
+                    try:
+                        with st.spinner("Generating load profile..."):
+                            # Generate the load profile
+                            load_profile_df = generate_load_profile(
+                                tariff=viewer.tariff,
+                                avg_load=avg_load,
+                                load_factor=load_factor,
+                                tou_percentages=tou_percentages,
+                                year=year,
+                                seasonal_variation=seasonal_variation,
+                                weekend_factor=weekend_factor,
+                                daily_variation=daily_variation,
+                                noise_level=noise_level
+                            )
+                            
+                            # Save to load_profiles directory
+                            load_profiles_dir = script_dir / "load_profiles"
+                            load_profiles_dir.mkdir(exist_ok=True)
+                            
+                            # Clean filename
+                            clean_name = re.sub(r'[^\w\-_]', '_', profile_name.strip())
+                            filename = f"{clean_name}_{year}.csv"
+                            filepath = load_profiles_dir / filename
+                            
+                            # Save the file
+                            load_profile_df.to_csv(filepath, index=False)
+                            
+                            st.success(f"✅ Load profile generated successfully!")
+                            st.success(f"📁 Saved as: `{filename}` in the load_profiles directory")
+                            
+                            # Display summary statistics
+                            st.markdown("#### 📊 Generated Load Profile Summary")
+                            
+                            col1, col2, col3, col4 = st.columns(4)
+                            with col1:
+                                st.metric("Total Annual kWh", f"{load_profile_df['kWh'].sum():,.0f}")
+                            with col2:
+                                st.metric("Peak Load (kW)", f"{load_profile_df['load_kW'].max():.2f}")
+                            with col3:
+                                st.metric("Average Load (kW)", f"{load_profile_df['load_kW'].mean():.2f}")
+                            with col4:
+                                actual_load_factor = load_profile_df['load_kW'].mean() / load_profile_df['load_kW'].max()
+                                st.metric("Actual Load Factor", f"{actual_load_factor:.3f}")
+                            
+                            # Show monthly summary
+                            monthly_summary = load_profile_df.groupby('month').agg({
+                                'load_kW': ['mean', 'max'],
+                                'kWh': 'sum'
+                            }).round(2)
+                            monthly_summary.columns = ['Avg Load (kW)', 'Peak Load (kW)', 'Total kWh']
+                            monthly_summary.index = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+                                                   'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+                            
+                            st.markdown("#### 📅 Monthly Summary")
+                            st.dataframe(monthly_summary, use_container_width=True)
+                            
+                            # Plot the load profile
+                            st.markdown("#### 📈 Load Profile Visualization")
+                            
+                            # Sample data for plotting (show first week)
+                            sample_data = load_profile_df.head(672)  # First week (7 days * 96 intervals)
+                            
+                            fig_profile = go.Figure()
+                            fig_profile.add_trace(go.Scatter(
+                                x=sample_data['timestamp'],
+                                y=sample_data['load_kW'],
+                                mode='lines',
+                                name='Load (kW)',
+                                line=dict(color='rgba(59, 130, 246, 0.8)', width=2),
+                                hovertemplate="<b>%{x}</b><br>Load: %{y:.2f} kW<extra></extra>"
+                            ))
+                            
+                            fig_profile.update_layout(
+                                title=dict(
+                                    text=f'<b>Generated Load Profile - First Week Sample</b><br><span style="font-size: 0.75em; color: #6b7280;">{profile_name} - {year}</span>',
+                                    font=dict(size=20, color='#0f172a' if not dark_mode else '#f1f5f9'),
+                                    x=0.5,
+                                    xanchor='center'
+                                ),
+                                xaxis_title="Date/Time",
+                                yaxis_title="Load (kW)",
+                                height=400,
+                                showlegend=False,
+                                plot_bgcolor='rgba(248, 250, 252, 0.8)' if not dark_mode else 'rgba(15, 23, 42, 0.5)',
+                                paper_bgcolor='#ffffff' if not dark_mode else '#0f172a',
+                                font=dict(color='#0f172a' if not dark_mode else '#f1f5f9')
+                            )
+                            
+                            st.plotly_chart(fig_profile, use_container_width=True)
+                            
+                            # TOU distribution verification
+                            st.markdown("#### 🔍 TOU Distribution Verification")
+                            
+                            # Calculate actual TOU distribution
+                            actual_distribution = {}
+                            total_kwh = load_profile_df['kWh'].sum()
+                            
+                            for period in range(len(energy_rates)):
+                                period_mask = load_profile_df['energy_period'] == period
+                                period_kwh = load_profile_df[period_mask]['kWh'].sum()
+                                actual_percentage = (period_kwh / total_kwh * 100) if total_kwh > 0 else 0
+                                
+                                period_name = energy_labels[period] if energy_labels and period < len(energy_labels) else f"Period {period}"
+                                actual_distribution[period_name] = {
+                                    'target': tou_percentages.get(period, 0),
+                                    'actual': actual_percentage,
+                                    'kwh': period_kwh
+                                }
+                            
+                            # Display comparison
+                            comparison_data = []
+                            for period_name, data in actual_distribution.items():
+                                comparison_data.append({
+                                    'TOU Period': period_name,
+                                    'Target %': f"{data['target']:.1f}%",
+                                    'Actual %': f"{data['actual']:.1f}%",
+                                    'Difference': f"{data['actual'] - data['target']:+.1f}%",
+                                    'Energy (kWh)': f"{data['kwh']:,.0f}"
+                                })
+                            
+                            comparison_df = pd.DataFrame(comparison_data)
+                            st.dataframe(comparison_df, use_container_width=True, hide_index=True)
+                            
+                    except Exception as e:
+                        st.error(f"❌ Error generating load profile: {str(e)}")
+                        st.exception(e)
 
     st.markdown('<hr class="custom-divider">', unsafe_allow_html=True)
 
