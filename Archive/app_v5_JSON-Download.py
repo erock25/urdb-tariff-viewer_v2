@@ -579,37 +579,6 @@ class TariffViewer:
             # Non-consecutive, list them
             return ", ".join(months)
 
-def create_temp_viewer_with_modified_tariff(modified_tariff_data):
-    """Create a temporary TariffViewer instance with modified tariff data"""
-    class TempTariffViewer(TariffViewer):
-        def __init__(self, modified_data):
-            try:
-                self.data = modified_data
-                
-                # Handle both direct tariff data and wrapped in 'items'
-                if 'items' in self.data:
-                    self.tariff = self.data['items'][0]
-                else:
-                    self.tariff = self.data
-                    self.data = {'items': [self.data]}  # Wrap for consistency
-                
-                # Extract basic information with fallbacks
-                self.utility_name = self.tariff.get('utility', 'Unknown Utility')
-                self.rate_name = self.tariff.get('name', 'Unknown Rate')
-                self.sector = self.tariff.get('sector', 'Unknown Sector')
-                self.description = self.tariff.get('description', 'No description available')
-                
-                # Setup data structures
-                self.months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-                self.hours = list(range(24))
-                self.update_rate_dataframes()
-                
-            except Exception as e:
-                st.error(f"Error creating temporary viewer: {str(e)}")
-                raise
-    
-    return TempTariffViewer(modified_tariff_data)
-
 def generate_load_profile(tariff, avg_load, load_factor, tou_percentages, year, 
                          seasonal_variation=0.1, weekend_factor=0.8, 
                          daily_variation=0.15, noise_level=0.05):
@@ -1142,54 +1111,36 @@ def main():
     </style>
     """, unsafe_allow_html=True)
     
+    st.markdown('<h1 class="main-header">URDB Tariff Viewer</h1>', unsafe_allow_html=True)
+    # Sub-header tagline for modern look
+    st.markdown('<p style="text-align: center; margin: -10px 0 24px 0; color: #64748b; font-size: 1.05rem;">Explore utility tariffs with beautiful, interactive visuals</p>', unsafe_allow_html=True)
 
-    # Find JSON files from both directories
+    # Find JSON files
     script_dir = Path(__file__).parent
 
-    # Look in tariffs subdirectory for original tariffs
+    # Look in tariffs subdirectory first
     tariffs_dir = script_dir / "tariffs"
-    original_files = list(tariffs_dir.glob("*.json")) if tariffs_dir.exists() else []
-    
-    # Look in user_tariffs subdirectory for user-generated tariffs
-    user_tariffs_dir = script_dir / "user_tariffs"
-    user_files = list(user_tariffs_dir.glob("*.json")) if user_tariffs_dir.exists() else []
+    json_files = list(tariffs_dir.glob("*.json")) if tariffs_dir.exists() else []
 
-    # If no files found in tariffs dir, check main directory for backward compatibility
-    if not original_files:
-        original_files = list(script_dir.glob("*.json"))
+    # If no files found in tariffs dir, check main directory
+    if not json_files:
+        json_files = list(script_dir.glob("*.json"))
 
-    # Combine and sort files for consistent ordering
-    json_files = original_files + user_files
+    # Sort files for consistent ordering
     json_files.sort()
     
     if not json_files:
-        st.error("No JSON files found! Please make sure your JSON files are in the 'tariffs/' or 'user_tariffs/' subdirectories.")
+        st.error("No JSON files found! Please make sure your JSON files are in the 'tariffs' subdirectory.")
         return
 
-    # Load all tariff info for selection with tags
+    # Load all tariff info for selection
     tariff_options = []
-    
-    # Process original tariffs
-    for file_path in original_files:
+    for file_path in json_files:
         try:
             with open(file_path, 'r') as f:
                 data = json.load(f)
                 tariff = data['items'][0] if 'items' in data else data
-                base_name = f"{tariff.get('utility', 'Unknown')} - {tariff.get('name', file_path.name)}"
-                display_name = f"📋 {base_name}"  # Original tariff tag
-                tariff_options.append((file_path, display_name))
-        except Exception as e:
-            st.error(f"Error loading {file_path.name}: {str(e)}")
-            continue
-    
-    # Process user-generated tariffs
-    for file_path in user_files:
-        try:
-            with open(file_path, 'r') as f:
-                data = json.load(f)
-                tariff = data['items'][0] if 'items' in data else data
-                base_name = f"{tariff.get('utility', 'Unknown')} - {tariff.get('name', file_path.name)}"
-                display_name = f"👤 {base_name} (User Generated)"  # User-generated tariff tag
+                display_name = f"{tariff.get('utility', 'Unknown')} - {tariff.get('name', file_path.name)}"
                 tariff_options.append((file_path, display_name))
         except Exception as e:
             st.error(f"Error loading {file_path.name}: {str(e)}")
@@ -1204,10 +1155,29 @@ def main():
         st.session_state.current_tariff = tariff_options[0][0]
         st.session_state.tariff_viewer = TariffViewer(st.session_state.current_tariff)
 
-    # Initialize modified tariff session state early (before sidebar)
-    if 'modified_tariff' not in st.session_state:
-        st.session_state.modified_tariff = None
-        st.session_state.has_modifications = False
+    # Add a compact tariff selector in the main area as backup
+    with st.expander("🔄 Quick Tariff Selector (if sidebar is hidden)", expanded=False):
+        # Find current selection index
+        current_index = 0
+        for i, (path, name) in enumerate(tariff_options):
+            if path == st.session_state.current_tariff:
+                current_index = i
+                break
+        
+        backup_selected = st.selectbox(
+            "Select a tariff:",
+            options=[option[0] for option in tariff_options],
+            format_func=lambda x: next(name for path, name in tariff_options if path == x),
+            key="backup_tariff_select",
+            index=current_index
+        )
+        
+        # Update session state when backup selector changes
+        if backup_selected != st.session_state.current_tariff:
+            st.session_state.tariff_viewer = TariffViewer(backup_selected)
+            st.session_state.current_tariff = backup_selected
+            st.success("✅ Tariff updated!")
+            st.rerun()
 
     # Sidebar for controls
     with st.sidebar:
@@ -1287,105 +1257,18 @@ def main():
         
         st.markdown("---")
         
-        # Tariff save functionality
-        if st.session_state.has_modifications:
-            st.markdown("### 💾 Save Modified Tariff")
-            st.success("✏️ **Modified tariff** - Changes are not saved to original file")
-            
-            if st.button("🔄 Reset to Original", help="Discard all changes and restore original tariff", use_container_width=True):
-                st.session_state.modified_tariff = None
-                st.session_state.has_modifications = False
-                # Clear energy form state to reload original values
-                if 'form_labels' in st.session_state:
-                    del st.session_state.form_labels
-                if 'form_rates' in st.session_state:
-                    del st.session_state.form_rates
-                if 'form_adjustments' in st.session_state:
-                    del st.session_state.form_adjustments
-                # Clear demand form state to reload original values
-                if 'demand_form_labels' in st.session_state:
-                    del st.session_state.demand_form_labels
-                if 'demand_form_rates' in st.session_state:
-                    del st.session_state.demand_form_rates
-                if 'demand_form_adjustments' in st.session_state:
-                    del st.session_state.demand_form_adjustments
-                # Clear flat demand form state to reload original values
-                if 'flat_demand_form_rates' in st.session_state:
-                    del st.session_state.flat_demand_form_rates
-                if 'flat_demand_form_adjustments' in st.session_state:
-                    del st.session_state.flat_demand_form_adjustments
-                st.rerun()
-            
-            if st.button("💾 Save As New File", type="primary", help="Save modified tariff as a new JSON file", use_container_width=True):
-                st.session_state.show_save_dialog = True
-            
-            # Save dialog in sidebar
-            if st.session_state.get('show_save_dialog', False):
-                st.markdown("#### 💾 Save File")
-                
-                with st.form("sidebar_save_tariff_form"):
-                    # Generate default filename
-                    default_name = f"{st.session_state.tariff_viewer.utility_name}_{st.session_state.tariff_viewer.rate_name}_Modified".replace(" ", "_").replace("-", "_")
-                    # Clean filename by replacing invalid characters
-                    clean_default = "".join(c if c.isalnum() or c in "._-" else "_" for c in default_name)
-                    
-                    new_filename = st.text_input(
-                        "Filename:",
-                        value=clean_default,
-                        help="Enter a name for the new tariff file (without .json extension)"
-                    )
-                    
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        if st.form_submit_button("💾 Save", type="primary"):
-                            if new_filename.strip():
-                                try:
-                                    # Clean filename
-                                    clean_filename = "".join(c if c.isalnum() or c in "._-" else "_" for c in new_filename.strip())
-                                    if not clean_filename.endswith('.json'):
-                                        clean_filename += '.json'
-                                    
-                                    # Create user_tariffs directory if it doesn't exist
-                                    script_dir = Path(__file__).parent
-                                    user_tariffs_dir = script_dir / "user_tariffs"
-                                    user_tariffs_dir.mkdir(exist_ok=True)
-                                    
-                                    filepath = user_tariffs_dir / clean_filename
-                                    
-                                    # Save the modified tariff
-                                    with open(filepath, 'w') as f:
-                                        json.dump(st.session_state.modified_tariff, f, indent=2, ensure_ascii=False)
-                                    
-                                    # Use toast notifications instead of sidebar messages
-                                    st.toast(f"✅ Saved as '{clean_filename}'!", icon="✅")
-                                    st.toast("🔄 Refresh to see in dropdown", icon="🔄")
-                                    st.session_state.show_save_dialog = False
-                                    
-                                except Exception as e:
-                                    st.toast(f"❌ Error: {str(e)}", icon="❌")
-                            else:
-                                st.toast("❌ Please enter a filename.", icon="❌")
-                    
-                    with col2:
-                        if st.form_submit_button("❌ Cancel"):
-                            st.session_state.show_save_dialog = False
-                            st.rerun()
-            
-            st.markdown("---")
-        
         # Tariff upload section
         st.markdown("### 📁 Upload New Tariff")
-        
         uploaded_file = st.file_uploader(
             "Upload Tariff JSON File",
             type=['json'],
             accept_multiple_files=False,
-            help="Upload a URDB tariff JSON file (max 1MB) - will be saved to user_tariffs/ directory",
+            help="Upload a URDB tariff JSON file (max 1MB)",
             key="tariff_upload"
         )
         
         # Display file size limit info
-        st.caption("📏 **File size limit**: 1MB maximum | 📁 **Saved to**: user_tariffs/ directory")
+        st.caption("📏 **File size limit**: 1MB maximum")
         
         if uploaded_file is not None:
             # Validate file size (1MB = 1,048,576 bytes)
@@ -1410,9 +1293,9 @@ def main():
                             is_valid_tariff = True
                     
                     if is_valid_tariff:
-                        # Create user_tariffs directory if it doesn't exist (uploaded files go to user_tariffs)
-                        user_tariffs_dir = script_dir / "user_tariffs"
-                        user_tariffs_dir.mkdir(exist_ok=True)
+                        # Create tariffs directory if it doesn't exist
+                        tariffs_dir = script_dir / "tariffs"
+                        tariffs_dir.mkdir(exist_ok=True)
                         
                         # Generate filename (clean the uploaded filename)
                         original_name = uploaded_file.name
@@ -1422,7 +1305,7 @@ def main():
                         # Clean filename to remove special characters
                         import re
                         clean_name = re.sub(r'[^\w\-_\.]', '_', original_name)
-                        filepath = user_tariffs_dir / clean_name
+                        filepath = tariffs_dir / clean_name
                         
                         # Check if file already exists
                         if filepath.exists():
@@ -1904,46 +1787,36 @@ def main():
         unsafe_allow_html=True,
     )
 
-    # Set default visualization settings since controls were removed
-    show_text = True
-    chart_height = 700
-    text_size = 12
+    # Main content area - Heatmaps
+    st.markdown('<h2 class="section-header">📊 Rate Visualizations</h2>', unsafe_allow_html=True)
     
-    # Session state already initialized earlier
-    
-    # Track current tariff file to detect changes
-    current_tariff_file = str(st.session_state.current_tariff)
-    if 'last_tariff_file' not in st.session_state or st.session_state.last_tariff_file != current_tariff_file:
-        # Tariff has changed, clear all form states to force re-initialization
-        st.session_state.last_tariff_file = current_tariff_file
+    # Add visualization configuration
+    with st.expander("⚙️ Visualization Settings"):
+        col1, col2, col3 = st.columns(3)
         
-        # Clear energy form state
-        if 'form_labels' in st.session_state:
-            del st.session_state.form_labels
-        if 'form_rates' in st.session_state:
-            del st.session_state.form_rates
-        if 'form_adjustments' in st.session_state:
-            del st.session_state.form_adjustments
+        with col1:
+            show_text = st.checkbox("Show Rate Values", value=True, help="Display the actual rate values on the heatmap")
+        
+        with col2:
+            chart_height_option = st.selectbox(
+                "Chart Height",
+                options=["Large (700px)", "Medium (600px)", "Small (500px)"],
+                index=0,
+                help="Choose the height of the heatmap charts for better readability"
+            )
             
-        # Clear demand form state
-        if 'demand_form_labels' in st.session_state:
-            del st.session_state.demand_form_labels
-        if 'demand_form_rates' in st.session_state:
-            del st.session_state.demand_form_rates
-        if 'demand_form_adjustments' in st.session_state:
-            del st.session_state.demand_form_adjustments
-            
-        # Clear flat demand form state
-        if 'flat_demand_form_rates' in st.session_state:
-            del st.session_state.flat_demand_form_rates
-        if 'flat_demand_form_adjustments' in st.session_state:
-            del st.session_state.flat_demand_form_adjustments
-            
-        # Clear modification state when switching tariffs (unless it's a user-generated tariff)
-        if not current_tariff_file.startswith(str(Path(__file__).parent / "user_tariffs")):
-            st.session_state.modified_tariff = None
-            st.session_state.has_modifications = False
+            # Extract the height value from the selected option
+            if "700px" in chart_height_option:
+                chart_height = 700
+            elif "600px" in chart_height_option:
+                chart_height = 600
+            else:
+                chart_height = 500
+        
+        with col3:
+            text_size = st.slider("Text Size", min_value=10, max_value=16, value=12, help="Adjust the size of rate values on the heatmap")
     
+    st.markdown('<hr class="custom-divider">', unsafe_allow_html=True)
     
     # Create tabs for energy and demand rates with modern styling
     tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs(["⚡ Energy Rates", "🔌 Demand Rates", "📊 Flat Demand", "📈 Combined View", "💰 Utility Cost Calculator", "🔧 Load Profile Generator", "📊 LP Analysis"])
@@ -1951,480 +1824,98 @@ def main():
     with tab1:
         st.markdown("### ⚡ Energy Rate Structure")
         
-        # Use modified tariff if available, otherwise use original
-        if st.session_state.modified_tariff:
-            # Extract tariff data from modified structure
-            if 'items' in st.session_state.modified_tariff:
-                current_tariff = st.session_state.modified_tariff['items'][0]
-            else:
-                current_tariff = st.session_state.modified_tariff
-        else:
-            current_tariff = viewer.tariff
-        
-        
-        # TOU Labels Table - Editable
-        st.markdown("#### 🏷️ Time-of-Use Period Labels & Rates (Editable)")
-        
-        energy_labels = current_tariff.get('energytoulabels', [])
-        energy_rates = current_tariff.get('energyratestructure', [])
-        
-        
-        if energy_rates:
-            # Initialize form values in session state if not exists or if we need to refresh from current tariff
-            form_needs_init = (
-                'form_labels' not in st.session_state or 
-                len(st.session_state.get('form_labels', [])) != len(energy_rates) or
-                len(st.session_state.get('form_rates', [])) != len(energy_rates)
+        # TOU Labels Table
+        st.markdown("#### 🏷️ Time-of-Use Period Labels & Rates")
+        tou_table = viewer.create_tou_labels_table()
+        if not tou_table.empty:
+            st.dataframe(
+                tou_table,
+                use_container_width=True,
+                hide_index=True,
+                column_config={
+                    "TOU Period": st.column_config.TextColumn(
+                        "TOU Period",
+                        help="Time-of-Use period name",
+                        width="medium"
+                    ),
+                    "Base Rate ($/kWh)": st.column_config.TextColumn(
+                        "Base Rate ($/kWh)",
+                        help="Base energy rate before adjustments",
+                        width="small"
+                    ),
+                    "Adjustment ($/kWh)": st.column_config.TextColumn(
+                        "Adjustment ($/kWh)",
+                        help="Rate adjustments (surcharges, credits, etc.)",
+                        width="small"
+                    ),
+                    "Total Rate ($/kWh)": st.column_config.TextColumn(
+                        "Total Rate ($/kWh)",
+                        help="Final rate including all adjustments",
+                        width="small"
+                    ),
+                    "Months Present": st.column_config.TextColumn(
+                        "Months Present",
+                        help="Which months this TOU period is active in weekday/weekend schedules",
+                        width=300,  # Fixed pixel width to allow text wrapping
+                        max_chars=None  # Allow unlimited characters for wrapping
+                    )
+                }
             )
-            
-            if form_needs_init:
-                st.session_state.form_labels = energy_labels.copy() if energy_labels else []
-                st.session_state.form_rates = []
-                st.session_state.form_adjustments = []
-                
-                for i, rate_structure in enumerate(energy_rates):
-                    if rate_structure:
-                        rate_info = rate_structure[0]
-                        st.session_state.form_rates.append(float(rate_info.get('rate', 0)))
-                        st.session_state.form_adjustments.append(float(rate_info.get('adj', 0)))
-                    else:
-                        st.session_state.form_rates.append(0.0)
-                        st.session_state.form_adjustments.append(0.0)
-                
-                # Ensure we have labels for all periods
-                while len(st.session_state.form_labels) < len(energy_rates):
-                    st.session_state.form_labels.append(f"Period {len(st.session_state.form_labels)}")
-            
-            # Create editable form
-            with st.form("energy_rates_form"):
-                st.markdown("**Edit the rates below and click 'Apply Changes' to update:**")
-                
-                edited_labels = []
-                edited_rates = []
-                
-                # Create columns for the form
-                col_headers = st.columns([3, 2, 2, 1])
-                col_headers[0].write("**TOU Period Name**")
-                col_headers[1].write("**Base Rate ($/kWh)**")
-                col_headers[2].write("**Adjustment ($/kWh)**")
-                col_headers[3].write("**Total**")
-                
-                for i, rate_structure in enumerate(energy_rates):
-                    if rate_structure:  # Ensure rate structure exists
-                        rate_info = rate_structure[0]  # Get first tier
-                        
-                        # Use session state values if available, otherwise use original values
-                        if i < len(st.session_state.form_labels):
-                            current_label = st.session_state.form_labels[i]
-                        elif energy_labels and i < len(energy_labels):
-                            current_label = energy_labels[i]
-                        else:
-                            current_label = f"Period {i}"
-                        
-                        if i < len(st.session_state.form_rates):
-                            base_rate = st.session_state.form_rates[i]
-                        else:
-                            base_rate = float(rate_info.get('rate', 0))
-                        
-                        if i < len(st.session_state.form_adjustments):
-                            adjustment = st.session_state.form_adjustments[i]
-                        else:
-                            adjustment = float(rate_info.get('adj', 0))
-                        
-                        # Create input fields
-                        cols = st.columns([3, 2, 2, 1])
-                        
-                        with cols[0]:
-                            new_label = st.text_input(
-                                f"Label {i}",
-                                value=current_label,
-                                key=f"label_{i}",
-                                label_visibility="collapsed"
-                            )
-                            edited_labels.append(new_label)
-                        
-                        with cols[1]:
-                            new_base_rate = st.number_input(
-                                f"Base Rate {i}",
-                                value=base_rate,
-                                step=0.0001,
-                                format="%.4f",
-                                key=f"base_rate_{i}",
-                                label_visibility="collapsed"
-                            )
-                        
-                        with cols[2]:
-                            new_adjustment = st.number_input(
-                                f"Adjustment {i}",
-                                value=adjustment,
-                                step=0.0001,
-                                format="%.4f",
-                                key=f"adjustment_{i}",
-                                label_visibility="collapsed"
-                            )
-                        
-                        with cols[3]:
-                            total_rate = new_base_rate + new_adjustment
-                            st.write(f"${total_rate:.4f}")
-                        
-                        # Store the edited rate structure
-                        edited_rate_info = rate_info.copy()
-                        edited_rate_info['rate'] = new_base_rate
-                        edited_rate_info['adj'] = new_adjustment
-                        edited_rates.append([edited_rate_info])
-                    else:
-                        edited_rates.append([])
-                        edited_labels.append(f"Period {i}")
-                
-                # Apply changes button
-                if st.form_submit_button("✅ Apply Changes", type="primary"):
-                    # Update session state with new values
-                    st.session_state.form_labels = edited_labels.copy()
-                    st.session_state.form_rates = [edited_rates[i][0]['rate'] if edited_rates[i] else 0.0 for i in range(len(edited_rates))]
-                    st.session_state.form_adjustments = [edited_rates[i][0]['adj'] if edited_rates[i] else 0.0 for i in range(len(edited_rates))]
-                    
-                    # Create modified tariff - use deep copy to avoid reference issues
-                    import copy
-                    if not st.session_state.modified_tariff:
-                        st.session_state.modified_tariff = copy.deepcopy(viewer.data)
-                    
-                    # Update the tariff data
-                    if 'items' in st.session_state.modified_tariff:
-                        tariff_data = st.session_state.modified_tariff['items'][0]
-                    else:
-                        tariff_data = st.session_state.modified_tariff
-                    
-                    # Update energy rate structure
-                    tariff_data['energyratestructure'] = edited_rates
-                    
-                    # Update energy TOU labels
-                    tariff_data['energytoulabels'] = edited_labels
-                    
-                    st.session_state.has_modifications = True
-                    st.success("✅ Changes applied! The visualizations will update to reflect your changes.")
-                    st.rerun()
-            
-            # Show current table (read-only) for reference
-            st.markdown("---")
-            st.markdown("#### 📊 Current Rate Table")
-            
-            # Create table data for display
-            table_data = []
-            weekday_schedule = current_tariff.get('energyweekdayschedule', [])
-            weekend_schedule = current_tariff.get('energyweekendschedule', [])
-            
-            current_energy_labels = current_tariff.get('energytoulabels', [])
-            current_energy_rates = current_tariff.get('energyratestructure', [])
-            
-            for i, rate_structure in enumerate(current_energy_rates):
-                if rate_structure:
-                    rate_info = rate_structure[0]
-                    rate = rate_info.get('rate', 0)
-                    adj = rate_info.get('adj', 0)
-                    total_rate = rate + adj
-
-                    if current_energy_labels and i < len(current_energy_labels):
-                        period_label = current_energy_labels[i]
-                    else:
-                        period_label = f"Period {i}"
-
-                    # Determine which months this TOU period appears in
-                    months_present = viewer._get_months_for_tou_period(i, weekday_schedule, weekend_schedule)
-
-                    table_data.append({
-                        'TOU Period': period_label,
-                        'Base Rate ($/kWh)': f"${rate:.4f}",
-                        'Adjustment ($/kWh)': f"${adj:.4f}",
-                        'Total Rate ($/kWh)': f"${total_rate:.4f}",
-                        'Months Present': months_present
-                    })
-
-            if table_data:
-                display_df = pd.DataFrame(table_data)
-                st.dataframe(
-                    display_df,
-                    use_container_width=True,
-                    hide_index=True,
-                    column_config={
-                        "TOU Period": st.column_config.TextColumn(
-                            "TOU Period",
-                            help="Time-of-Use period name",
-                            width="medium"
-                        ),
-                        "Base Rate ($/kWh)": st.column_config.TextColumn(
-                            "Base Rate ($/kWh)",
-                            help="Base energy rate before adjustments",
-                            width="small"
-                        ),
-                        "Adjustment ($/kWh)": st.column_config.TextColumn(
-                            "Adjustment ($/kWh)",
-                            help="Rate adjustments (surcharges, credits, etc.)",
-                            width="small"
-                        ),
-                        "Total Rate ($/kWh)": st.column_config.TextColumn(
-                            "Total Rate ($/kWh)",
-                            help="Final rate including all adjustments",
-                            width="small"
-                        ),
-                        "Months Present": st.column_config.TextColumn(
-                            "Months Present",
-                            help="Which months this TOU period is active in weekday/weekend schedules",
-                            width=300,
-                            max_chars=None
-                        )
-                    }
-                )
         else:
             st.info("📝 **Note:** No energy rate structure found in this tariff JSON.")
-        
         
         st.markdown("---")
         
         # Weekday Energy Rates - Full Width
         st.markdown("#### 📈 Weekday Energy Rates")
-        
-        # Create a temporary viewer with modified tariff if needed
-        if st.session_state.has_modifications and st.session_state.modified_tariff:
-            temp_viewer = create_temp_viewer_with_modified_tariff(st.session_state.modified_tariff)
-            st.plotly_chart(temp_viewer.plot_heatmap(is_weekday=True, dark_mode=dark_mode, rate_type="energy", chart_height=chart_height, text_size=text_size), use_container_width=True)
-        else:
-            st.plotly_chart(viewer.plot_heatmap(is_weekday=True, dark_mode=dark_mode, rate_type="energy", chart_height=chart_height, text_size=text_size), use_container_width=True)
+        st.plotly_chart(viewer.plot_heatmap(is_weekday=True, dark_mode=dark_mode, rate_type="energy", chart_height=chart_height, text_size=text_size), use_container_width=True)
         
         st.markdown("---")
         
         # Weekend Energy Rates - Full Width
         st.markdown("#### 📉 Weekend Energy Rates")
-        
-        if st.session_state.has_modifications and st.session_state.modified_tariff:
-            temp_viewer = create_temp_viewer_with_modified_tariff(st.session_state.modified_tariff)
-            st.plotly_chart(temp_viewer.plot_heatmap(is_weekday=False, dark_mode=dark_mode, rate_type="energy", chart_height=chart_height, text_size=text_size), use_container_width=True)
-        else:
-            st.plotly_chart(viewer.plot_heatmap(is_weekday=False, dark_mode=dark_mode, rate_type="energy", chart_height=chart_height, text_size=text_size), use_container_width=True)
+        st.plotly_chart(viewer.plot_heatmap(is_weekday=False, dark_mode=dark_mode, rate_type="energy", chart_height=chart_height, text_size=text_size), use_container_width=True)
         
     with tab2:
         st.markdown("### 🔌 Demand Charge Rate Structure")
-        
-        # Use the same modified tariff logic as energy rates
-        if st.session_state.modified_tariff:
-            # Extract tariff data from modified structure
-            if 'items' in st.session_state.modified_tariff:
-                current_demand_tariff = st.session_state.modified_tariff['items'][0]
-            else:
-                current_demand_tariff = st.session_state.modified_tariff
-        else:
-            current_demand_tariff = viewer.tariff
 
-        # Demand Labels Table - Editable
-        st.markdown("#### 🏷️ Demand Period Labels & Rates (Editable)")
-        
-        demand_labels = current_demand_tariff.get('demandlabels', [])
-        demand_rates = current_demand_tariff.get('demandratestructure', [])
-        
-        if demand_rates:
-            # Initialize demand form values in session state if not exists or if we need to refresh from current tariff
-            demand_form_needs_init = (
-                'demand_form_labels' not in st.session_state or 
-                len(st.session_state.get('demand_form_labels', [])) != len(demand_rates) or
-                len(st.session_state.get('demand_form_rates', [])) != len(demand_rates)
+        # Demand Labels Table
+        st.markdown("#### 🏷️ Demand Period Labels & Rates")
+        demand_table = viewer.create_demand_labels_table()
+        if not demand_table.empty:
+            st.dataframe(
+                demand_table,
+                use_container_width=True,
+                hide_index=True,
+                column_config={
+                    "Demand Period": st.column_config.TextColumn(
+                        "Demand Period",
+                        help="Demand charge period name",
+                        width="medium"
+                    ),
+                    "Base Rate ($/kW)": st.column_config.TextColumn(
+                        "Base Rate ($/kW)",
+                        help="Base demand rate before adjustments",
+                        width="small"
+                    ),
+                    "Adjustment ($/kW)": st.column_config.TextColumn(
+                        "Adjustment ($/kW)",
+                        help="Rate adjustments (surcharges, credits, etc.)",
+                        width="small"
+                    ),
+                    "Total Rate ($/kW)": st.column_config.TextColumn(
+                        "Total Rate ($/kW)",
+                        help="Final demand rate including all adjustments",
+                        width="small"
+                    ),
+                    "Months Present": st.column_config.TextColumn(
+                        "Months Present",
+                        help="Which months this demand period is active in weekday/weekend schedules",
+                        width=300,  # Fixed pixel width to allow text wrapping
+                        max_chars=None  # Allow unlimited characters for wrapping
+                    )
+                }
             )
-            
-            if demand_form_needs_init:
-                st.session_state.demand_form_labels = demand_labels.copy() if demand_labels else []
-                st.session_state.demand_form_rates = []
-                st.session_state.demand_form_adjustments = []
-                
-                for i, rate_structure in enumerate(demand_rates):
-                    if rate_structure:
-                        rate_info = rate_structure[0]
-                        st.session_state.demand_form_rates.append(float(rate_info.get('rate', 0)))
-                        st.session_state.demand_form_adjustments.append(float(rate_info.get('adj', 0)))
-                    else:
-                        st.session_state.demand_form_rates.append(0.0)
-                        st.session_state.demand_form_adjustments.append(0.0)
-                
-                # Ensure we have labels for all periods
-                while len(st.session_state.demand_form_labels) < len(demand_rates):
-                    st.session_state.demand_form_labels.append(f"Demand Period {len(st.session_state.demand_form_labels)}")
-            
-            # Create editable form for demand rates
-            with st.form("demand_rates_form"):
-                st.markdown("**Edit the demand rates below and click 'Apply Changes' to update:**")
-                
-                edited_demand_labels = []
-                edited_demand_rates = []
-                
-                # Create columns for the form
-                col_headers = st.columns([3, 2, 2, 1])
-                col_headers[0].write("**Demand Period Name**")
-                col_headers[1].write("**Base Rate ($/kW)**")
-                col_headers[2].write("**Adjustment ($/kW)**")
-                col_headers[3].write("**Total**")
-                
-                for i, rate_structure in enumerate(demand_rates):
-                    if rate_structure:  # Ensure rate structure exists
-                        rate_info = rate_structure[0]  # Get first tier
-                        
-                        # Use session state values if available, otherwise use original values
-                        if i < len(st.session_state.demand_form_labels):
-                            current_label = st.session_state.demand_form_labels[i]
-                        elif demand_labels and i < len(demand_labels):
-                            current_label = demand_labels[i]
-                        else:
-                            current_label = f"Demand Period {i}"
-                        
-                        if i < len(st.session_state.demand_form_rates):
-                            base_rate = st.session_state.demand_form_rates[i]
-                        else:
-                            base_rate = float(rate_info.get('rate', 0))
-                        
-                        if i < len(st.session_state.demand_form_adjustments):
-                            adjustment = st.session_state.demand_form_adjustments[i]
-                        else:
-                            adjustment = float(rate_info.get('adj', 0))
-                        
-                        # Create input fields
-                        cols = st.columns([3, 2, 2, 1])
-                        
-                        with cols[0]:
-                            new_label = st.text_input(
-                                f"Demand Label {i}",
-                                value=current_label,
-                                key=f"demand_label_{i}",
-                                label_visibility="collapsed"
-                            )
-                            edited_demand_labels.append(new_label)
-                        
-                        with cols[1]:
-                            new_base_rate = st.number_input(
-                                f"Demand Base Rate {i}",
-                                value=base_rate,
-                                step=0.0001,
-                                format="%.4f",
-                                key=f"demand_base_rate_{i}",
-                                label_visibility="collapsed"
-                            )
-                        
-                        with cols[2]:
-                            new_adjustment = st.number_input(
-                                f"Demand Adjustment {i}",
-                                value=adjustment,
-                                step=0.0001,
-                                format="%.4f",
-                                key=f"demand_adjustment_{i}",
-                                label_visibility="collapsed"
-                            )
-                        
-                        with cols[3]:
-                            total_rate = new_base_rate + new_adjustment
-                            st.write(f"${total_rate:.4f}")
-                        
-                        # Store the edited rate structure
-                        edited_rate_info = rate_info.copy()
-                        edited_rate_info['rate'] = new_base_rate
-                        edited_rate_info['adj'] = new_adjustment
-                        edited_demand_rates.append([edited_rate_info])
-                    else:
-                        edited_demand_rates.append([])
-                        edited_demand_labels.append(f"Demand Period {i}")
-                
-                # Apply changes button for demand rates
-                if st.form_submit_button("✅ Apply Changes", type="primary"):
-                    # Update session state with new values
-                    st.session_state.demand_form_labels = edited_demand_labels.copy()
-                    st.session_state.demand_form_rates = [edited_demand_rates[i][0]['rate'] if edited_demand_rates[i] else 0.0 for i in range(len(edited_demand_rates))]
-                    st.session_state.demand_form_adjustments = [edited_demand_rates[i][0]['adj'] if edited_demand_rates[i] else 0.0 for i in range(len(edited_demand_rates))]
-                    
-                    # Create modified tariff - use deep copy to avoid reference issues
-                    import copy
-                    if not st.session_state.modified_tariff:
-                        st.session_state.modified_tariff = copy.deepcopy(viewer.data)
-                    
-                    # Update the tariff data
-                    if 'items' in st.session_state.modified_tariff:
-                        tariff_data = st.session_state.modified_tariff['items'][0]
-                    else:
-                        tariff_data = st.session_state.modified_tariff
-                    
-                    # Update demand rate structure
-                    tariff_data['demandratestructure'] = edited_demand_rates
-                    
-                    # Update demand labels
-                    tariff_data['demandlabels'] = edited_demand_labels
-                    
-                    st.session_state.has_modifications = True
-                    st.success("✅ Demand rate changes applied! The visualizations will update to reflect your changes.")
-                    st.rerun()
-            
-            # Show current demand table (read-only) for reference
-            st.markdown("---")
-            st.markdown("#### 📊 Current Demand Rate Table")
-            
-            # Create table data for display
-            demand_table_data = []
-            demand_weekday_schedule = current_demand_tariff.get('demandweekdayschedule', [])
-            demand_weekend_schedule = current_demand_tariff.get('demandweekendschedule', [])
-            
-            current_demand_labels = current_demand_tariff.get('demandlabels', [])
-            current_demand_rates = current_demand_tariff.get('demandratestructure', [])
-            
-            for i, rate_structure in enumerate(current_demand_rates):
-                if rate_structure:
-                    rate_info = rate_structure[0]
-                    rate = rate_info.get('rate', 0)
-                    adj = rate_info.get('adj', 0)
-                    total_rate = rate + adj
-
-                    if current_demand_labels and i < len(current_demand_labels):
-                        period_label = current_demand_labels[i]
-                    else:
-                        period_label = f"Demand Period {i}"
-
-                    # Determine which months this demand period appears in
-                    months_present = viewer._get_months_for_demand_period(i, demand_weekday_schedule, demand_weekend_schedule)
-
-                    demand_table_data.append({
-                        'Demand Period': period_label,
-                        'Base Rate ($/kW)': f"${rate:.4f}",
-                        'Adjustment ($/kW)': f"${adj:.4f}",
-                        'Total Rate ($/kW)': f"${total_rate:.4f}",
-                        'Months Present': months_present
-                    })
-
-            if demand_table_data:
-                display_demand_df = pd.DataFrame(demand_table_data)
-                st.dataframe(
-                    display_demand_df,
-                    use_container_width=True,
-                    hide_index=True,
-                    column_config={
-                        "Demand Period": st.column_config.TextColumn(
-                            "Demand Period",
-                            help="Demand charge period name",
-                            width="medium"
-                        ),
-                        "Base Rate ($/kW)": st.column_config.TextColumn(
-                            "Base Rate ($/kW)",
-                            help="Base demand rate before adjustments",
-                            width="small"
-                        ),
-                        "Adjustment ($/kW)": st.column_config.TextColumn(
-                            "Adjustment ($/kW)",
-                            help="Rate adjustments (surcharges, credits, etc.)",
-                            width="small"
-                        ),
-                        "Total Rate ($/kW)": st.column_config.TextColumn(
-                            "Total Rate ($/kW)",
-                            help="Final demand rate including all adjustments",
-                            width="small"
-                        ),
-                        "Months Present": st.column_config.TextColumn(
-                            "Months Present",
-                            help="Which months this demand period is active in weekday/weekend schedules",
-                            width=300,
-                            max_chars=None
-                        )
-                    }
-                )
         else:
             st.info("📝 **Note:** No demand rate structure found in this tariff JSON.")
 
@@ -2432,257 +1923,26 @@ def main():
 
         # Weekday Demand Rates - Full Width
         st.markdown("#### 📈 Weekday Demand Rates")
-        
-        # Create a temporary viewer with modified tariff if needed
-        if st.session_state.has_modifications and st.session_state.modified_tariff:
-            temp_viewer = create_temp_viewer_with_modified_tariff(st.session_state.modified_tariff)
-            st.plotly_chart(temp_viewer.plot_heatmap(is_weekday=True, dark_mode=dark_mode, rate_type="demand", chart_height=chart_height, text_size=text_size), use_container_width=True)
-        else:
-            st.plotly_chart(viewer.plot_heatmap(is_weekday=True, dark_mode=dark_mode, rate_type="demand", chart_height=chart_height, text_size=text_size), use_container_width=True)
+        st.plotly_chart(viewer.plot_heatmap(is_weekday=True, dark_mode=dark_mode, rate_type="demand", chart_height=chart_height, text_size=text_size), use_container_width=True)
         
         st.markdown("---")
         
         # Weekend Demand Rates - Full Width
         st.markdown("#### 📉 Weekend Demand Rates")
-        
-        if st.session_state.has_modifications and st.session_state.modified_tariff:
-            temp_viewer = create_temp_viewer_with_modified_tariff(st.session_state.modified_tariff)
-            st.plotly_chart(temp_viewer.plot_heatmap(is_weekday=False, dark_mode=dark_mode, rate_type="demand", chart_height=chart_height, text_size=text_size), use_container_width=True)
-        else:
-            st.plotly_chart(viewer.plot_heatmap(is_weekday=False, dark_mode=dark_mode, rate_type="demand", chart_height=chart_height, text_size=text_size), use_container_width=True)
+        st.plotly_chart(viewer.plot_heatmap(is_weekday=False, dark_mode=dark_mode, rate_type="demand", chart_height=chart_height, text_size=text_size), use_container_width=True)
     
     with tab3:
         st.markdown("### 📊 Seasonal/Monthly Flat Demand Rates")
-        
-        # Use the same modified tariff logic as other rate types
-        if st.session_state.modified_tariff:
-            # Extract tariff data from modified structure
-            if 'items' in st.session_state.modified_tariff:
-                current_flat_demand_tariff = st.session_state.modified_tariff['items'][0]
-            else:
-                current_flat_demand_tariff = st.session_state.modified_tariff
-        else:
-            current_flat_demand_tariff = viewer.tariff
-
-        # Flat Demand Rates - Editable
-        st.markdown("#### 🏷️ Monthly Flat Demand Rates (Editable)")
-        
-        flat_demand_rates = current_flat_demand_tariff.get('flatdemandstructure', [])
-        flat_demand_months = current_flat_demand_tariff.get('flatdemandmonths', [])
-        
-        if flat_demand_rates and flat_demand_months:
-            # Initialize flat demand form values in session state
-            flat_demand_form_needs_init = (
-                'flat_demand_form_rates' not in st.session_state or 
-                len(st.session_state.get('flat_demand_form_rates', [])) != 12
-            )
-            
-            if flat_demand_form_needs_init:
-                st.session_state.flat_demand_form_rates = []
-                st.session_state.flat_demand_form_adjustments = []
-                
-                # Initialize rates for all 12 months
-                for month_idx in range(12):
-                    period_idx = flat_demand_months[month_idx] if month_idx < len(flat_demand_months) else 0
-                    if period_idx < len(flat_demand_rates) and flat_demand_rates[period_idx]:
-                        rate = flat_demand_rates[period_idx][0].get('rate', 0)
-                        adj = flat_demand_rates[period_idx][0].get('adj', 0)
-                        st.session_state.flat_demand_form_rates.append(float(rate))
-                        st.session_state.flat_demand_form_adjustments.append(float(adj))
-                    else:
-                        st.session_state.flat_demand_form_rates.append(0.0)
-                        st.session_state.flat_demand_form_adjustments.append(0.0)
-            
-            # Create editable form for flat demand rates
-            with st.form("flat_demand_rates_form"):
-                st.markdown("**Edit the monthly flat demand rates below and click 'Apply Changes' to update:**")
-                
-                edited_flat_demand_rates = []
-                edited_flat_demand_adjustments = []
-                
-                # Create columns for the form
-                col_headers = st.columns([2, 2, 2, 1])
-                col_headers[0].write("**Month**")
-                col_headers[1].write("**Base Rate ($/kW)**")
-                col_headers[2].write("**Adjustment ($/kW)**")
-                col_headers[3].write("**Total**")
-                
-                month_names = ['January', 'February', 'March', 'April', 'May', 'June',
-                             'July', 'August', 'September', 'October', 'November', 'December']
-                
-                for month_idx in range(12):
-                    # Use session state values if available
-                    if month_idx < len(st.session_state.flat_demand_form_rates):
-                        base_rate = st.session_state.flat_demand_form_rates[month_idx]
-                    else:
-                        base_rate = 0.0
-                    
-                    if month_idx < len(st.session_state.flat_demand_form_adjustments):
-                        adjustment = st.session_state.flat_demand_form_adjustments[month_idx]
-                    else:
-                        adjustment = 0.0
-                    
-                    # Create input fields
-                    cols = st.columns([2, 2, 2, 1])
-                    
-                    with cols[0]:
-                        st.write(f"**{month_names[month_idx]}**")
-                    
-                    with cols[1]:
-                        new_base_rate = st.number_input(
-                            f"Base Rate {month_idx}",
-                            value=base_rate,
-                            step=0.0001,
-                            format="%.4f",
-                            key=f"flat_demand_base_rate_{month_idx}",
-                            label_visibility="collapsed"
-                        )
-                        edited_flat_demand_rates.append(new_base_rate)
-                    
-                    with cols[2]:
-                        new_adjustment = st.number_input(
-                            f"Adjustment {month_idx}",
-                            value=adjustment,
-                            step=0.0001,
-                            format="%.4f",
-                            key=f"flat_demand_adjustment_{month_idx}",
-                            label_visibility="collapsed"
-                        )
-                        edited_flat_demand_adjustments.append(new_adjustment)
-                    
-                    with cols[3]:
-                        total_rate = new_base_rate + new_adjustment
-                        st.write(f"${total_rate:.4f}")
-                
-                # Apply changes button for flat demand rates
-                if st.form_submit_button("✅ Apply Changes", type="primary"):
-                    # Update session state with new values
-                    st.session_state.flat_demand_form_rates = edited_flat_demand_rates.copy()
-                    st.session_state.flat_demand_form_adjustments = edited_flat_demand_adjustments.copy()
-                    
-                    # Create modified tariff - use deep copy to avoid reference issues
-                    import copy
-                    if not st.session_state.modified_tariff:
-                        st.session_state.modified_tariff = copy.deepcopy(viewer.data)
-                    
-                    # Update the tariff data
-                    if 'items' in st.session_state.modified_tariff:
-                        tariff_data = st.session_state.modified_tariff['items'][0]
-                    else:
-                        tariff_data = st.session_state.modified_tariff
-                    
-                    # Rebuild flat demand structure
-                    # For simplicity, create one rate structure per month
-                    new_flat_demand_structure = []
-                    new_flat_demand_months = []
-                    
-                    for month_idx in range(12):
-                        rate_structure = [{
-                            'rate': edited_flat_demand_rates[month_idx],
-                            'adj': edited_flat_demand_adjustments[month_idx],
-                            'unit': 'kW'
-                        }]
-                        new_flat_demand_structure.append(rate_structure)
-                        new_flat_demand_months.append(month_idx)
-                    
-                    # Update flat demand structure
-                    tariff_data['flatdemandstructure'] = new_flat_demand_structure
-                    tariff_data['flatdemandmonths'] = new_flat_demand_months
-                    
-                    st.session_state.has_modifications = True
-                    st.success("✅ Flat demand rate changes applied! The visualizations will update to reflect your changes.")
-                    st.rerun()
-            
-            # Show current flat demand table (read-only) for reference
-            st.markdown("---")
-            st.markdown("#### 📊 Current Monthly Flat Demand Rates")
-            
-            # Create table data for display
-            flat_demand_table_data = []
-            month_names_short = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-                               'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-            
-            current_flat_demand_rates = current_flat_demand_tariff.get('flatdemandstructure', [])
-            current_flat_demand_months = current_flat_demand_tariff.get('flatdemandmonths', [])
-            
-            for month_idx in range(12):
-                period_idx = current_flat_demand_months[month_idx] if month_idx < len(current_flat_demand_months) else 0
-                if period_idx < len(current_flat_demand_rates) and current_flat_demand_rates[period_idx]:
-                    rate = current_flat_demand_rates[period_idx][0].get('rate', 0)
-                    adj = current_flat_demand_rates[period_idx][0].get('adj', 0)
-                else:
-                    rate = 0
-                    adj = 0
-                
-                total_rate = rate + adj
-                
-                flat_demand_table_data.append({
-                    'Month': month_names_short[month_idx],
-                    'Base Rate ($/kW)': f"${rate:.4f}",
-                    'Adjustment ($/kW)': f"${adj:.4f}",
-                    'Total Rate ($/kW)': f"${total_rate:.4f}"
-                })
-            
-            if flat_demand_table_data:
-                display_flat_demand_df = pd.DataFrame(flat_demand_table_data)
-                st.dataframe(
-                    display_flat_demand_df,
-                    use_container_width=True,
-                    hide_index=True,
-                    column_config={
-                        "Month": st.column_config.TextColumn(
-                            "Month",
-                            help="Month of the year",
-                            width="small"
-                        ),
-                        "Base Rate ($/kW)": st.column_config.TextColumn(
-                            "Base Rate ($/kW)",
-                            help="Base flat demand rate before adjustments",
-                            width="medium"
-                        ),
-                        "Adjustment ($/kW)": st.column_config.TextColumn(
-                            "Adjustment ($/kW)",
-                            help="Rate adjustments (surcharges, credits, etc.)",
-                            width="medium"
-                        ),
-                        "Total Rate ($/kW)": st.column_config.TextColumn(
-                            "Total Rate ($/kW)",
-                            help="Final flat demand rate including all adjustments",
-                            width="medium"
-                        )
-                    }
-                )
-        else:
-            st.info("📝 **Note:** No flat demand rate structure found in this tariff JSON.")
-        
-        st.markdown("---")
-        
-        # Flat Demand Rates Chart
-        st.markdown("#### 📈 Monthly Flat Demand Rates Visualization")
-        
-        # Use modified tariff for chart if available
-        if st.session_state.has_modifications and st.session_state.modified_tariff:
-            temp_viewer = create_temp_viewer_with_modified_tariff(st.session_state.modified_tariff)
-            st.plotly_chart(temp_viewer.plot_flat_demand_rates(dark_mode=dark_mode), use_container_width=True)
-        else:
-            st.plotly_chart(viewer.plot_flat_demand_rates(dark_mode=dark_mode), use_container_width=True)
+        st.plotly_chart(viewer.plot_flat_demand_rates(dark_mode=dark_mode), use_container_width=True)
         
     with tab4:
         st.markdown("### 📈 Combined Rate Analysis")
         st.markdown("**Energy vs Demand Rate Comparison**")
-        
-        # Use modified tariff if available
-        if st.session_state.has_modifications and st.session_state.modified_tariff:
-            temp_viewer = create_temp_viewer_with_modified_tariff(st.session_state.modified_tariff)
-            comparison_viewer = temp_viewer
-        else:
-            comparison_viewer = viewer
-        
         # Create comparison chart
         comparison_data = pd.DataFrame({
-            'Month': comparison_viewer.months,
-            'Avg Energy Rate ($/kWh)': [comparison_viewer.weekday_df.iloc[i].mean() for i in range(12)],
-            'Avg Demand Rate ($/kW)': [comparison_viewer.demand_weekday_df.iloc[i].mean() for i in range(12)]
+            'Month': viewer.months,
+            'Avg Energy Rate ($/kWh)': [viewer.weekday_df.iloc[i].mean() for i in range(12)],
+            'Avg Demand Rate ($/kW)': [viewer.demand_weekday_df.iloc[i].mean() for i in range(12)]
         })
         fig = px.line(comparison_data, x='Month', y=['Avg Energy Rate ($/kWh)', 'Avg Demand Rate ($/kW)'],
                      title="Monthly Average Rates Comparison", markers=True)
@@ -2708,17 +1968,8 @@ def main():
         if st.button("🧮 Calculate Utility Costs", type="primary"):
             try:
                 with st.spinner("Calculating utility costs..."):
-                    # Use modified tariff if available
-                    if st.session_state.has_modifications and st.session_state.modified_tariff:
-                        if 'items' in st.session_state.modified_tariff:
-                            tariff_for_calc = st.session_state.modified_tariff['items'][0]
-                        else:
-                            tariff_for_calc = st.session_state.modified_tariff
-                    else:
-                        tariff_for_calc = viewer.tariff
-                    
                     # Calculate costs using the current tariff and selected load profile
-                    results = calculate_utility_costs_for_app(tariff_for_calc, str(selected_load_profile))
+                    results = calculate_utility_costs_for_app(viewer.tariff, str(selected_load_profile))
                     
                     st.success("✅ Calculation completed successfully!")
                     
@@ -2952,17 +2203,9 @@ def main():
         st.markdown("#### 📊 Energy Distribution by TOU Period")
         st.markdown("Specify what percentage of total annual energy falls into each TOU period for the selected tariff.")
         
-        # Get TOU periods from current tariff (use modified if available)
-        if st.session_state.has_modifications and st.session_state.modified_tariff:
-            if 'items' in st.session_state.modified_tariff:
-                current_tariff_for_gen = st.session_state.modified_tariff['items'][0]
-            else:
-                current_tariff_for_gen = st.session_state.modified_tariff
-        else:
-            current_tariff_for_gen = viewer.tariff
-            
-        energy_labels = current_tariff_for_gen.get('energytoulabels', [])
-        energy_rates = current_tariff_for_gen.get('energyratestructure', [])
+        # Get TOU periods from current tariff
+        energy_labels = viewer.tariff.get('energytoulabels', [])
+        energy_rates = viewer.tariff.get('energyratestructure', [])
         
         if not energy_rates:
             st.error("❌ The selected tariff does not have energy rate structure. Please select a different tariff.")
@@ -3057,7 +2300,7 @@ def main():
                         with st.spinner("Generating load profile..."):
                             # Generate the load profile
                             load_profile_df = generate_load_profile(
-                                tariff=current_tariff_for_gen,
+                                tariff=viewer.tariff,
                                 avg_load=avg_load,
                                 load_factor=load_factor,
                                 tou_percentages=tou_percentages,
