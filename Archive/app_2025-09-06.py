@@ -1181,6 +1181,7 @@ def main():
 
     # Sidebar for controls
     with st.sidebar:
+        st.markdown('<div class="sidebar-header">🎛️ Viewer Controls</div>', unsafe_allow_html=True)
         
         # Tariff selection with modern styling
         st.markdown("### 📊 Select Tariff")
@@ -1203,172 +1204,19 @@ def main():
         
         st.markdown("---")
         
-        # Load profile selection
-        st.markdown("### 📈 Select Load Profile")
-        
-        # Find load profile files
-        load_profiles_dir = script_dir / "load_profiles"
-        sidebar_load_profile_files = []
-        if load_profiles_dir.exists():
-            sidebar_load_profile_files = list(load_profiles_dir.glob("*.csv"))
-        
-        if sidebar_load_profile_files:
-            # Create load profile options
-            sidebar_load_profile_options = []
-            for file_path in sidebar_load_profile_files:
-                display_name = file_path.stem.replace('_', ' ').title()
-                sidebar_load_profile_options.append((file_path, display_name))
-            
-            # Sort options by display name
-            sidebar_load_profile_options.sort(key=lambda x: x[1])
-            
-            # Initialize current load profile if not exists
-            if 'current_load_profile' not in st.session_state:
-                st.session_state.current_load_profile = sidebar_load_profile_options[0][0]
-            
-            # Find current selection index for sidebar
-            sidebar_lp_current_index = 0
-            for i, (path, name) in enumerate(sidebar_load_profile_options):
-                if path == st.session_state.current_load_profile:
-                    sidebar_lp_current_index = i
-                    break
-            
-            selected_load_profile = st.selectbox(
-                "Choose a load profile:",
-                options=[option[0] for option in sidebar_load_profile_options],
-                format_func=lambda x: next(name for path, name in sidebar_load_profile_options if path == x),
-                label_visibility="collapsed",
-                key="sidebar_load_profile_select",
-                index=sidebar_lp_current_index
-            )
-            
-            # Update session state when sidebar load profile selector changes
-            if selected_load_profile != st.session_state.current_load_profile:
-                st.session_state.current_load_profile = selected_load_profile
-                st.success("✅ Load profile updated!")
-                
-            # Show current load profile info
-            current_lp_name = next(name for path, name in sidebar_load_profile_options if path == selected_load_profile)
-            st.caption(f"📊 **Current**: {current_lp_name}")
-            
-        else:
-            st.info("📁 No load profile files found in 'load_profiles' directory")
-            st.session_state.current_load_profile = None
-        
-        st.markdown("---")
-        
-        # Tariff upload section
-        st.markdown("### 📁 Upload New Tariff")
-        uploaded_file = st.file_uploader(
-            "Upload Tariff JSON File",
-            type=['json'],
-            accept_multiple_files=False,
-            help="Upload a URDB tariff JSON file (max 1MB)",
-            key="tariff_upload"
-        )
-        
-        # Display file size limit info
-        st.caption("📏 **File size limit**: 1MB maximum")
-        
-        if uploaded_file is not None:
-            # Validate file size (1MB = 1,048,576 bytes)
-            if uploaded_file.size > 1048576:
-                st.error("❌ File size exceeds 1MB limit. Please upload a smaller file.")
-            else:
-                try:
-                    # Try to parse the JSON to validate it
-                    file_content = uploaded_file.read()
-                    json_data = json.loads(file_content.decode('utf-8'))
-                    
-                    # Basic validation - check if it looks like a URDB tariff
-                    is_valid_tariff = False
-                    if isinstance(json_data, dict):
-                        # Check for URDB tariff structure
-                        if 'items' in json_data and isinstance(json_data['items'], list) and len(json_data['items']) > 0:
-                            tariff_item = json_data['items'][0]
-                            if isinstance(tariff_item, dict) and ('utility' in tariff_item or 'name' in tariff_item):
-                                is_valid_tariff = True
-                        # Also accept direct tariff objects (not wrapped in 'items')
-                        elif 'utility' in json_data or 'name' in json_data:
-                            is_valid_tariff = True
-                    
-                    if is_valid_tariff:
-                        # Create tariffs directory if it doesn't exist
-                        tariffs_dir = script_dir / "tariffs"
-                        tariffs_dir.mkdir(exist_ok=True)
-                        
-                        # Generate filename (clean the uploaded filename)
-                        original_name = uploaded_file.name
-                        if not original_name.endswith('.json'):
-                            original_name += '.json'
-                        
-                        # Clean filename to remove special characters
-                        import re
-                        clean_name = re.sub(r'[^\w\-_\.]', '_', original_name)
-                        filepath = tariffs_dir / clean_name
-                        
-                        # Check if file already exists
-                        if filepath.exists():
-                            if st.button("⚠️ File exists! Click to overwrite", type="secondary"):
-                                # Save the file
-                                with open(filepath, 'wb') as f:
-                                    f.write(file_content)
-                                st.success(f"✅ Tariff file '{clean_name}' uploaded and saved successfully!")
-                                st.info("🔄 Please refresh the page or reselect the tariff to see the new file in the dropdown.")
-                        else:
-                            # Save the file
-                            with open(filepath, 'wb') as f:
-                                f.write(file_content)
-                            st.success(f"✅ Tariff file '{clean_name}' uploaded and saved successfully!")
-                            st.info("🔄 Please refresh the page or reselect the tariff to see the new file in the dropdown.")
-                    else:
-                        st.error("❌ Invalid tariff format. Please upload a valid URDB tariff JSON file.")
-                        st.info("💡 The file should contain either:\n- An 'items' array with tariff objects\n- A direct tariff object with 'utility' or 'name' fields")
-                
-                except json.JSONDecodeError as e:
-                    st.error(f"❌ Invalid JSON file: {str(e)}")
-                except UnicodeDecodeError:
-                    st.error("❌ File encoding error. Please ensure the file is saved in UTF-8 format.")
-                except Exception as e:
-                    st.error(f"❌ Error processing file: {str(e)}")
-        
-        st.markdown("---")
-        
-        # Tariff download section
-        st.markdown("### 📥 Download Current Tariff")
-        
-        # Get current tariff data
-        if 'tariff_viewer' in st.session_state and st.session_state.tariff_viewer:
-            current_tariff_data = st.session_state.tariff_viewer.data
-            current_tariff_name = f"{st.session_state.tariff_viewer.utility_name}_{st.session_state.tariff_viewer.rate_name}".replace(" ", "_").replace("-", "_")
-            
-            # Clean the filename
-            import re
-            clean_filename = re.sub(r'[^\w\-_]', '_', current_tariff_name)
-            download_filename = f"{clean_filename}.json"
-            
-            # Convert to JSON string with proper formatting
-            json_string = json.dumps(current_tariff_data, indent=2, ensure_ascii=False)
-            
-            st.download_button(
-                label="📄 Download Tariff JSON",
-                data=json_string,
-                file_name=download_filename,
-                mime="application/json",
-                help=f"Download the currently selected tariff: {st.session_state.tariff_viewer.utility_name} - {st.session_state.tariff_viewer.rate_name}",
-                use_container_width=True
-            )
-            
-            # Show file info
-            st.caption(f"📋 **Current tariff**: {st.session_state.tariff_viewer.utility_name} - {st.session_state.tariff_viewer.rate_name}")
-        else:
-            st.info("🔄 No tariff selected. Please select a tariff to enable download.")
-        
-        st.markdown("---")
-        
         # Display preferences
         st.markdown("### 🎨 Display Preferences")
         dark_mode = st.checkbox("🌙 Dark Mode", value=True)
+        
+        # Helpful tip for better viewing
+        st.info("💡 **Pro Tip**: Adjust visualization settings below for optimal viewing experience!")
+
+        # Add a note about sidebar visibility
+        with st.expander("📱 Having trouble seeing the sidebar?", expanded=False):
+            st.write("If the sidebar is not visible:")
+            st.write("1. Look for a **>** arrow on the top-left of the page")
+            st.write("2. Click it to expand the sidebar")
+            st.write("3. Or use the tariff selector in the main area below")
 
         # Update session state when sidebar selector changes
         if selected_file != st.session_state.current_tariff:
@@ -1819,7 +1667,7 @@ def main():
     st.markdown('<hr class="custom-divider">', unsafe_allow_html=True)
     
     # Create tabs for energy and demand rates with modern styling
-    tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs(["⚡ Energy Rates", "🔌 Demand Rates", "📊 Flat Demand", "📈 Combined View", "💰 Utility Cost Calculator", "🔧 Load Profile Generator", "📊 LP Analysis"])
+    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["⚡ Energy Rates", "🔌 Demand Rates", "📊 Flat Demand", "📈 Combined View", "💰 Utility Cost Calculator", "🔧 Load Profile Generator"])
     
     with tab1:
         st.markdown("### ⚡ Energy Rate Structure")
@@ -1953,58 +1801,71 @@ def main():
         st.markdown("### 💰 Utility Cost Calculator")
         st.markdown("Calculate monthly utility bills by applying the selected tariff to a load profile.")
         
-        # Check if load profile is selected in sidebar
-        if 'current_load_profile' not in st.session_state or st.session_state.current_load_profile is None:
-            st.warning("⚠️ Please select a load profile from the sidebar to calculate utility costs.")
-            st.stop()
+        # Load profile selection
+        st.markdown("#### 📈 Select Load Profile")
         
-        selected_load_profile = st.session_state.current_load_profile
+        # Find load profile files
+        load_profiles_dir = script_dir / "load_profiles"
+        load_profile_files = []
+        if load_profiles_dir.exists():
+            load_profile_files = list(load_profiles_dir.glob("*.csv"))
         
-        # Show current load profile info
-        load_profile_name = selected_load_profile.stem.replace('_', ' ').title()
-        st.info(f"📊 **Using load profile**: {load_profile_name}")
-        st.markdown("*To change the load profile, use the selector in the sidebar.*")
-        
-        if st.button("🧮 Calculate Utility Costs", type="primary"):
-            try:
-                with st.spinner("Calculating utility costs..."):
-                    # Calculate costs using the current tariff and selected load profile
-                    results = calculate_utility_costs_for_app(viewer.tariff, str(selected_load_profile))
-                    
-                    st.success("✅ Calculation completed successfully!")
-                    
-                    # Display results summary
-                    st.markdown("#### 📊 Monthly Utility Cost Summary")
+        if not load_profile_files:
+            st.error("No load profile CSV files found in the 'load_profiles' directory!")
+        else:
+            # Create load profile options
+            load_profile_options = []
+            for file_path in load_profile_files:
+                display_name = file_path.stem.replace('_', ' ').title()
+                load_profile_options.append((file_path, display_name))
+            
+            selected_load_profile = st.selectbox(
+                "Choose a load profile:",
+                options=[option[0] for option in load_profile_options],
+                format_func=lambda x: next(name for path, name in load_profile_options if path == x),
+                help="Select a CSV file containing load profile data with timestamp and load_kW columns"
+            )
+            
+            if st.button("🧮 Calculate Utility Costs", type="primary"):
+                try:
+                    with st.spinner("Calculating utility costs..."):
+                        # Calculate costs using the current tariff and selected load profile
+                        results = calculate_utility_costs_for_app(viewer.tariff, str(selected_load_profile))
+                        
+                        st.success("✅ Calculation completed successfully!")
+                        
+                        # Display results summary
+                        st.markdown("#### 📊 Monthly Utility Cost Summary")
 
-                    # Create summary metrics
-                    total_annual_cost = results['total_charge'].sum()
-                    total_annual_kwh = results['total_kwh'].sum()
-                    avg_monthly_cost = results['total_charge'].mean()
-                    effective_rate_per_kwh = total_annual_cost / total_annual_kwh if total_annual_kwh > 0 else 0
+                        # Create summary metrics
+                        total_annual_cost = results['total_charge'].sum()
+                        total_annual_kwh = results['total_kwh'].sum()
+                        avg_monthly_cost = results['total_charge'].mean()
+                        effective_rate_per_kwh = total_annual_cost / total_annual_kwh if total_annual_kwh > 0 else 0
 
-                    col1, col2, col3, col4 = st.columns(4)
-                    with col1:
-                        st.metric("Annual Total Cost", f"${total_annual_cost:,.0f}")
-                    with col2:
-                        st.metric("Annual Total kWh", f"{total_annual_kwh:,.0f}")
-                    with col3:
-                        st.metric("Average Monthly Cost", f"${avg_monthly_cost:,.0f}")
-                    with col4:
-                        st.metric("Effective Rate $/kWh", f"${effective_rate_per_kwh:.4f}")
-                    
-                    st.markdown("---")
-                    
-                    # Display detailed monthly breakdown
-                    st.markdown("#### 📅 Detailed Monthly Breakdown")
-                    
-                    # Prepare display dataframe
-                    display_df = results[[
-                        'month_name', 'total_kwh', 'peak_kw', 'avg_load', 'load_factor',
-                        'total_energy_cost', 'total_demand_cost', 'fixed_charge', 'total_charge'
-                    ]].copy()
-                    
-                    # Format the dataframe for better display
-                    st.dataframe(
+                        col1, col2, col3, col4 = st.columns(4)
+                        with col1:
+                            st.metric("Annual Total Cost", f"${total_annual_cost:,.0f}")
+                        with col2:
+                            st.metric("Annual Total kWh", f"{total_annual_kwh:,.0f}")
+                        with col3:
+                            st.metric("Average Monthly Cost", f"${avg_monthly_cost:,.0f}")
+                        with col4:
+                            st.metric("Effective Rate $/kWh", f"${effective_rate_per_kwh:.4f}")
+                        
+                        st.markdown("---")
+                        
+                        # Display detailed monthly breakdown
+                        st.markdown("#### 📅 Detailed Monthly Breakdown")
+                        
+                        # Prepare display dataframe
+                        display_df = results[[
+                            'month_name', 'total_kwh', 'peak_kw', 'avg_load', 'load_factor',
+                            'total_energy_cost', 'total_demand_cost', 'fixed_charge', 'total_charge'
+                        ]].copy()
+                        
+                        # Format the dataframe for better display
+                        st.dataframe(
                             display_df,
                             use_container_width=True,
                             hide_index=True,
@@ -2056,107 +1917,107 @@ def main():
                                 )
                             }
                         )
-                    
-                    # Cost breakdown chart
-                    st.markdown("#### 📈 Monthly Cost Visualization")
-                    
-                    fig_costs = go.Figure()
-                    
-                    # Add stacked bar chart for cost breakdown
-                    fig_costs.add_trace(go.Bar(
-                        x=results['month_name'],
-                        y=results['total_energy_cost'],
-                        name='Energy Costs',
-                        marker_color='rgba(59, 130, 246, 0.8)',
-                        hovertemplate="<b>%{x}</b><br>Energy Cost: $%{y:.2f}<extra></extra>"
-                    ))
-                    
-                    fig_costs.add_trace(go.Bar(
-                        x=results['month_name'],
-                        y=results['total_demand_cost'],
-                        name='Demand Costs',
-                        marker_color='rgba(249, 115, 22, 0.8)',
-                        hovertemplate="<b>%{x}</b><br>Demand Cost: $%{y:.2f}<extra></extra>"
-                    ))
-                    
-                    fig_costs.add_trace(go.Bar(
-                        x=results['month_name'],
-                        y=results['fixed_charge'],
-                        name='Fixed Charges',
-                        marker_color='rgba(34, 197, 94, 0.8)',
-                        hovertemplate="<b>%{x}</b><br>Fixed Charge: $%{y:.2f}<extra></extra>"
-                    ))
-                    
-                    fig_costs.update_layout(
-                        title=dict(
-                            text=f'<b>Monthly Utility Cost Breakdown</b><br><span style="font-size: 0.75em; color: #6b7280;">{viewer.utility_name} - {viewer.rate_name}</span>',
-                            font=dict(size=20, color='#0f172a' if not dark_mode else '#f1f5f9'),
-                            x=0.5,
-                            xanchor='center'
-                        ),
-                        barmode='stack',
-                        xaxis_title="Month",
-                        yaxis_title="Cost ($)",
-                        height=500,
-                        showlegend=True,
-                        plot_bgcolor='rgba(248, 250, 252, 0.8)' if not dark_mode else 'rgba(15, 23, 42, 0.5)',
-                        paper_bgcolor='#ffffff' if not dark_mode else '#0f172a',
-                        font=dict(color='#0f172a' if not dark_mode else '#f1f5f9')
-                    )
-                    
-                    st.plotly_chart(fig_costs, use_container_width=True)
-                    
-                    # Load profile chart
-                    st.markdown("#### ⚡ Load Profile Overview")
-                    
-                    # Show monthly peak and average loads
-                    fig_load = go.Figure()
-                    
-                    fig_load.add_trace(go.Scatter(
-                        x=results['month_name'],
-                        y=results['peak_kw'],
-                        mode='lines+markers',
-                        name='Peak Load (kW)',
-                        line=dict(color='rgba(239, 68, 68, 0.8)', width=3),
-                        marker=dict(size=8),
-                        hovertemplate="<b>%{x}</b><br>Peak Load: %{y:.2f} kW<extra></extra>"
-                    ))
-                    
-                    fig_load.add_trace(go.Scatter(
-                        x=results['month_name'],
-                        y=results['avg_load'],
-                        mode='lines+markers',
-                        name='Average Load (kW)',
-                        line=dict(color='rgba(59, 130, 246, 0.8)', width=3),
-                        marker=dict(size=8),
-                        hovertemplate="<b>%{x}</b><br>Average Load: %{y:.2f} kW<extra></extra>"
-                    ))
-                    
-                    fig_load.update_layout(
-                        title=dict(
-                            text='<b>Monthly Load Profile Summary</b>',
-                            font=dict(size=20, color='#0f172a' if not dark_mode else '#f1f5f9'),
-                            x=0.5,
-                            xanchor='center'
-                        ),
-                        xaxis_title="Month",
-                        yaxis_title="Load (kW)",
-                        height=400,
-                        showlegend=True,
-                        plot_bgcolor='rgba(248, 250, 252, 0.8)' if not dark_mode else 'rgba(15, 23, 42, 0.5)',
-                        paper_bgcolor='#ffffff' if not dark_mode else '#0f172a',
-                        font=dict(color='#0f172a' if not dark_mode else '#f1f5f9')
-                    )
-                    
-                    st.plotly_chart(fig_load, use_container_width=True)
-                    
-            except InvalidTariffError as e:
-                st.error(f"❌ Tariff validation error: {str(e)}")
-            except InvalidLoadProfileError as e:
-                st.error(f"❌ Load profile error: {str(e)}")
-            except Exception as e:
-                st.error(f"❌ Calculation error: {str(e)}")
-                st.exception(e)
+                        
+                        # Cost breakdown chart
+                        st.markdown("#### 📈 Monthly Cost Visualization")
+                        
+                        fig_costs = go.Figure()
+                        
+                        # Add stacked bar chart for cost breakdown
+                        fig_costs.add_trace(go.Bar(
+                            x=results['month_name'],
+                            y=results['total_energy_cost'],
+                            name='Energy Costs',
+                            marker_color='rgba(59, 130, 246, 0.8)',
+                            hovertemplate="<b>%{x}</b><br>Energy Cost: $%{y:.2f}<extra></extra>"
+                        ))
+                        
+                        fig_costs.add_trace(go.Bar(
+                            x=results['month_name'],
+                            y=results['total_demand_cost'],
+                            name='Demand Costs',
+                            marker_color='rgba(249, 115, 22, 0.8)',
+                            hovertemplate="<b>%{x}</b><br>Demand Cost: $%{y:.2f}<extra></extra>"
+                        ))
+                        
+                        fig_costs.add_trace(go.Bar(
+                            x=results['month_name'],
+                            y=results['fixed_charge'],
+                            name='Fixed Charges',
+                            marker_color='rgba(34, 197, 94, 0.8)',
+                            hovertemplate="<b>%{x}</b><br>Fixed Charge: $%{y:.2f}<extra></extra>"
+                        ))
+                        
+                        fig_costs.update_layout(
+                            title=dict(
+                                text=f'<b>Monthly Utility Cost Breakdown</b><br><span style="font-size: 0.75em; color: #6b7280;">{viewer.utility_name} - {viewer.rate_name}</span>',
+                                font=dict(size=20, color='#0f172a' if not dark_mode else '#f1f5f9'),
+                                x=0.5,
+                                xanchor='center'
+                            ),
+                            barmode='stack',
+                            xaxis_title="Month",
+                            yaxis_title="Cost ($)",
+                            height=500,
+                            showlegend=True,
+                            plot_bgcolor='rgba(248, 250, 252, 0.8)' if not dark_mode else 'rgba(15, 23, 42, 0.5)',
+                            paper_bgcolor='#ffffff' if not dark_mode else '#0f172a',
+                            font=dict(color='#0f172a' if not dark_mode else '#f1f5f9')
+                        )
+                        
+                        st.plotly_chart(fig_costs, use_container_width=True)
+                        
+                        # Load profile chart
+                        st.markdown("#### ⚡ Load Profile Overview")
+                        
+                        # Show monthly peak and average loads
+                        fig_load = go.Figure()
+                        
+                        fig_load.add_trace(go.Scatter(
+                            x=results['month_name'],
+                            y=results['peak_kw'],
+                            mode='lines+markers',
+                            name='Peak Load (kW)',
+                            line=dict(color='rgba(239, 68, 68, 0.8)', width=3),
+                            marker=dict(size=8),
+                            hovertemplate="<b>%{x}</b><br>Peak Load: %{y:.2f} kW<extra></extra>"
+                        ))
+                        
+                        fig_load.add_trace(go.Scatter(
+                            x=results['month_name'],
+                            y=results['avg_load'],
+                            mode='lines+markers',
+                            name='Average Load (kW)',
+                            line=dict(color='rgba(59, 130, 246, 0.8)', width=3),
+                            marker=dict(size=8),
+                            hovertemplate="<b>%{x}</b><br>Average Load: %{y:.2f} kW<extra></extra>"
+                        ))
+                        
+                        fig_load.update_layout(
+                            title=dict(
+                                text='<b>Monthly Load Profile Summary</b>',
+                                font=dict(size=20, color='#0f172a' if not dark_mode else '#f1f5f9'),
+                                x=0.5,
+                                xanchor='center'
+                            ),
+                            xaxis_title="Month",
+                            yaxis_title="Load (kW)",
+                            height=400,
+                            showlegend=True,
+                            plot_bgcolor='rgba(248, 250, 252, 0.8)' if not dark_mode else 'rgba(15, 23, 42, 0.5)',
+                            paper_bgcolor='#ffffff' if not dark_mode else '#0f172a',
+                            font=dict(color='#0f172a' if not dark_mode else '#f1f5f9')
+                        )
+                        
+                        st.plotly_chart(fig_load, use_container_width=True)
+                        
+                except InvalidTariffError as e:
+                    st.error(f"❌ Tariff validation error: {str(e)}")
+                except InvalidLoadProfileError as e:
+                    st.error(f"❌ Load profile error: {str(e)}")
+                except Exception as e:
+                    st.error(f"❌ Calculation error: {str(e)}")
+                    st.exception(e)
                     
     with tab6:
         st.markdown("### 🔧 Load Profile Generator")
@@ -2422,279 +2283,6 @@ def main():
                     except Exception as e:
                         st.error(f"❌ Error generating load profile: {str(e)}")
                         st.exception(e)
-                        
-    with tab7:
-        st.markdown("### 📊 Load Profile Analysis")
-        st.markdown("Analyze existing load profiles to understand consumption patterns and characteristics.")
-        
-        # Check if load profile is selected in sidebar
-        if 'current_load_profile' not in st.session_state or st.session_state.current_load_profile is None:
-            st.warning("⚠️ Please select a load profile from the sidebar to analyze.")
-            st.stop()
-        
-        selected_analysis_profile = st.session_state.current_load_profile
-        
-        # Show current load profile info
-        analysis_load_profile_name = selected_analysis_profile.stem.replace('_', ' ').title()
-        st.info(f"📊 **Analyzing load profile**: {analysis_load_profile_name}")
-        st.markdown("*To change the load profile, use the selector in the sidebar.*")
-        
-        if st.button("🔍 Analyze Load Profile", type="primary"):
-            try:
-                with st.spinner("Analyzing load profile..."):
-                    # Load the CSV file
-                    df = pd.read_csv(selected_analysis_profile)
-                    
-                    # Validate required columns
-                    required_columns = ['timestamp', 'load_kW']
-                    missing_columns = [col for col in required_columns if col not in df.columns]
-                    
-                    if missing_columns:
-                        st.error(f"❌ Missing required columns: {', '.join(missing_columns)}")
-                        st.info("Required columns: timestamp, load_kW")
-                    else:
-                        # Parse timestamp and add derived columns
-                        df['timestamp'] = pd.to_datetime(df['timestamp'])
-                        df['month'] = df['timestamp'].dt.month
-                        df['hour'] = df['timestamp'].dt.hour
-                        df['weekday'] = df['timestamp'].dt.weekday  # 0=Monday, 6=Sunday
-                        df['day_name'] = df['timestamp'].dt.day_name()
-                        
-                        # Calculate kWh if not present (assuming 15-minute intervals)
-                        if 'kWh' not in df.columns:
-                            df['kWh'] = df['load_kW'] * 0.25  # 15 minutes = 0.25 hours
-                        
-                        st.success("✅ Load profile analyzed successfully!")
-                        
-                        # Display basic statistics
-                        st.markdown("#### 📊 Load Profile Overview")
-                        
-                        total_kwh = df['kWh'].sum()
-                        peak_kw = df['load_kW'].max()
-                        avg_kw = df['load_kW'].mean()
-                        load_factor = avg_kw / peak_kw if peak_kw > 0 else 0
-                        
-                        col1, col2, col3, col4 = st.columns(4)
-                        with col1:
-                            st.metric("Total Energy", f"{total_kwh:,.0f} kWh")
-                        with col2:
-                            st.metric("Peak Demand", f"{peak_kw:.2f} kW")
-                        with col3:
-                            st.metric("Average Load", f"{avg_kw:.2f} kW")
-                        with col4:
-                            st.metric("Load Factor", f"{load_factor:.3f}")
-                        
-                        st.markdown("---")
-                        
-                        # Monthly Analysis Table
-                        st.markdown("#### 📅 Monthly Peak Demand and Energy Analysis")
-                        
-                        monthly_stats = df.groupby('month').agg({
-                            'load_kW': ['max', 'mean'],
-                            'kWh': 'sum'
-                        }).round(2)
-                        
-                        # Flatten column names
-                        monthly_stats.columns = ['Peak Demand (kW)', 'Avg Load (kW)', 'Total Energy (kWh)']
-                        
-                        # Add month names
-                        month_names = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-                                     'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-                        monthly_stats.index = [month_names[i-1] for i in monthly_stats.index]
-                        
-                        # Add totals row
-                        totals_row = pd.DataFrame({
-                            'Peak Demand (kW)': [peak_kw],
-                            'Avg Load (kW)': [avg_kw],
-                            'Total Energy (kWh)': [total_kwh]
-                        }, index=['TOTAL'])
-                        
-                        monthly_stats_with_totals = pd.concat([monthly_stats, totals_row])
-                        
-                        st.dataframe(
-                            monthly_stats_with_totals,
-                            use_container_width=True,
-                            column_config={
-                                "Peak Demand (kW)": st.column_config.NumberColumn(
-                                    "Peak Demand (kW)",
-                                    help="Maximum demand for the month",
-                                    format="%.2f"
-                                ),
-                                "Avg Load (kW)": st.column_config.NumberColumn(
-                                    "Avg Load (kW)",
-                                    help="Average load for the month",
-                                    format="%.2f"
-                                ),
-                                "Total Energy (kWh)": st.column_config.NumberColumn(
-                                    "Total Energy (kWh)",
-                                    help="Total energy consumption for the month",
-                                    format="%.0f"
-                                )
-                            }
-                        )
-                        
-                        st.markdown("---")
-                        
-                        # Demand Level Analysis Table
-                        st.markdown("#### ⚡ Energy Above Demand Level Analysis")
-                        st.markdown("Shows cumulative energy (kWh) consumed at or above various demand levels.")
-                        
-                        # Create demand level analysis
-                        demand_levels = []
-                        kwh_above_levels = []
-                        
-                        current_level = peak_kw
-                        while current_level >= 0:
-                            # Count kWh where load is at or above this level
-                            kwh_above = df[df['load_kW'] >= current_level]['kWh'].sum()
-                            demand_levels.append(current_level)
-                            kwh_above_levels.append(kwh_above)
-                            current_level -= 50
-                            
-                            if current_level < 0:
-                                break
-                        
-                        # Create demand analysis DataFrame
-                        demand_analysis_df = pd.DataFrame({
-                            'Demand Level (kW)': [f"≥ {level:.0f}" for level in demand_levels],
-                            'Energy Above Level (kWh)': kwh_above_levels,
-                            'Percentage of Total': [(kwh / total_kwh * 100) if total_kwh > 0 else 0 for kwh in kwh_above_levels]
-                        })
-                        
-                        st.dataframe(
-                            demand_analysis_df,
-                            use_container_width=True,
-                            hide_index=True,
-                            column_config={
-                                "Demand Level (kW)": st.column_config.TextColumn(
-                                    "Demand Level (kW)",
-                                    help="Demand threshold level",
-                                    width="small"
-                                ),
-                                "Energy Above Level (kWh)": st.column_config.NumberColumn(
-                                    "Energy Above Level (kWh)",
-                                    help="Total energy consumed at or above this demand level",
-                                    format="%.0f"
-                                ),
-                                "Percentage of Total": st.column_config.NumberColumn(
-                                    "Percentage of Total",
-                                    help="Percentage of total energy above this demand level",
-                                    format="%.1f%%"
-                                )
-                            }
-                        )
-                        
-                        st.markdown("---")
-                        
-                        # Day of Week Analysis
-                        st.markdown("#### 📅 Energy Consumption by Day of Week")
-                        
-                        # Group by day of week
-                        day_order = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
-                        daily_kwh = df.groupby('day_name')['kWh'].sum().reindex(day_order)
-                        
-                        # Create bar chart for day of week
-                        fig_daily = go.Figure(data=go.Bar(
-                            x=daily_kwh.index,
-                            y=daily_kwh.values,
-                            text=[f'{val:,.0f}' for val in daily_kwh.values],
-                            textposition='outside',
-                            textfont=dict(
-                                size=12,
-                                color='#0f172a' if not dark_mode else '#f1f5f9',
-                                family='Inter, sans-serif'
-                            ),
-                            marker=dict(
-                                color=['rgba(59, 130, 246, 0.8)' if day in ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'] 
-                                      else 'rgba(34, 197, 94, 0.8)' for day in daily_kwh.index],
-                                line=dict(
-                                    color='rgba(255, 255, 255, 0.8)' if not dark_mode else 'rgba(15, 23, 42, 0.8)',
-                                    width=2
-                                )
-                            ),
-                            hovertemplate="<b>%{x}</b><br>Total Energy: %{y:,.0f} kWh<extra></extra>"
-                        ))
-                        
-                        fig_daily.update_layout(
-                            title=dict(
-                                text='<b>Total Energy Consumption by Day of Week</b>',
-                                font=dict(size=20, color='#0f172a' if not dark_mode else '#f1f5f9', family="Inter, sans-serif"),
-                                x=0.5,
-                                xanchor='center'
-                            ),
-                            xaxis=dict(
-                                title="Day of Week",
-                                tickfont=dict(size=12, color='#1f2937' if not dark_mode else '#cbd5e1'),
-                                showgrid=True,
-                                gridcolor='rgba(229, 231, 235, 0.5)' if not dark_mode else 'rgba(75, 85, 99, 0.5)'
-                            ),
-                            yaxis=dict(
-                                title="Energy (kWh)",
-                                tickfont=dict(size=12, color='#1f2937' if not dark_mode else '#cbd5e1'),
-                                showgrid=True,
-                                gridcolor='rgba(229, 231, 235, 0.5)' if not dark_mode else 'rgba(75, 85, 99, 0.5)'
-                            ),
-                            plot_bgcolor='rgba(248, 250, 252, 0.8)' if not dark_mode else 'rgba(15, 23, 42, 0.5)',
-                            paper_bgcolor='#ffffff' if not dark_mode else '#0f172a',
-                            height=400,
-                            font=dict(color='#0f172a' if not dark_mode else '#f1f5f9')
-                        )
-                        
-                        st.plotly_chart(fig_daily, use_container_width=True)
-                        
-                        st.markdown("---")
-                        
-                        # Hour of Day Analysis
-                        st.markdown("#### 🕐 Energy Consumption by Hour of Day")
-                        
-                        # Group by hour of day
-                        hourly_kwh = df.groupby('hour')['kWh'].sum()
-                        
-                        # Create line chart for hour of day
-                        fig_hourly = go.Figure(data=go.Scatter(
-                            x=hourly_kwh.index,
-                            y=hourly_kwh.values,
-                            mode='lines+markers',
-                            line=dict(color='rgba(59, 130, 246, 0.8)', width=3),
-                            marker=dict(size=6, color='rgba(59, 130, 246, 1.0)'),
-                            fill='tonexty' if len(hourly_kwh) > 1 else None,
-                            fillcolor='rgba(59, 130, 246, 0.1)',
-                            hovertemplate="<b>Hour %{x}:00</b><br>Total Energy: %{y:,.0f} kWh<extra></extra>"
-                        ))
-                        
-                        fig_hourly.update_layout(
-                            title=dict(
-                                text='<b>Total Energy Consumption by Hour of Day</b>',
-                                font=dict(size=20, color='#0f172a' if not dark_mode else '#f1f5f9', family="Inter, sans-serif"),
-                                x=0.5,
-                                xanchor='center'
-                            ),
-                            xaxis=dict(
-                                title="Hour of Day",
-                                tickfont=dict(size=12, color='#1f2937' if not dark_mode else '#cbd5e1'),
-                                showgrid=True,
-                                gridcolor='rgba(229, 231, 235, 0.5)' if not dark_mode else 'rgba(75, 85, 99, 0.5)',
-                                tickmode='linear',
-                                dtick=2
-                            ),
-                            yaxis=dict(
-                                title="Energy (kWh)",
-                                tickfont=dict(size=12, color='#1f2937' if not dark_mode else '#cbd5e1'),
-                                showgrid=True,
-                                gridcolor='rgba(229, 231, 235, 0.5)' if not dark_mode else 'rgba(75, 85, 99, 0.5)'
-                            ),
-                            plot_bgcolor='rgba(248, 250, 252, 0.8)' if not dark_mode else 'rgba(15, 23, 42, 0.5)',
-                            paper_bgcolor='#ffffff' if not dark_mode else '#0f172a',
-                            height=400,
-                            showlegend=False,
-                            font=dict(color='#0f172a' if not dark_mode else '#f1f5f9')
-                        )
-                        
-                        st.plotly_chart(fig_hourly, use_container_width=True)
-                        
-            except Exception as e:
-                st.error(f"❌ Error analyzing load profile: {str(e)}")
-                st.exception(e)
 
     st.markdown('<hr class="custom-divider">', unsafe_allow_html=True)
 
