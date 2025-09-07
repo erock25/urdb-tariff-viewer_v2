@@ -1946,7 +1946,7 @@ def main():
     
     
     # Create tabs for energy and demand rates with modern styling
-    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs(["⚡ Energy Rates", "🔌 Demand Rates", "📊 Flat Demand", "💰 Utility Cost Calculator", "🔧 Load Profile Generator", "📊 LP Analysis"])
+    tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs(["⚡ Energy Rates", "🔌 Demand Rates", "📊 Flat Demand", "📈 Combined View", "💰 Utility Cost Calculator", "🔧 Load Profile Generator", "📊 LP Analysis"])
     
     with tab1:
         st.markdown("### ⚡ Energy Rate Structure")
@@ -1962,80 +1962,12 @@ def main():
             current_tariff = viewer.tariff
         
         
-        # Show current table (read-only) first
-        st.markdown("#### 📊 Current Rate Table")
+        # TOU Labels Table - Editable
+        st.markdown("#### 🏷️ Time-of-Use Period Labels & Rates (Editable)")
         
         energy_labels = current_tariff.get('energytoulabels', [])
         energy_rates = current_tariff.get('energyratestructure', [])
         
-        
-        # Create table data for display
-        table_data = []
-        weekday_schedule = current_tariff.get('energyweekdayschedule', [])
-        weekend_schedule = current_tariff.get('energyweekendschedule', [])
-        
-        current_energy_labels = current_tariff.get('energytoulabels', [])
-        current_energy_rates = current_tariff.get('energyratestructure', [])
-        
-        for i, rate_structure in enumerate(current_energy_rates):
-            if rate_structure:
-                rate_info = rate_structure[0]
-                rate = rate_info.get('rate', 0)
-                adj = rate_info.get('adj', 0)
-                total_rate = rate + adj
-
-                if current_energy_labels and i < len(current_energy_labels):
-                    period_label = current_energy_labels[i]
-                else:
-                    period_label = f"Period {i}"
-
-                # Determine which months this TOU period appears in
-                months_present = viewer._get_months_for_tou_period(i, weekday_schedule, weekend_schedule)
-
-                table_data.append({
-                    'TOU Period': period_label,
-                    'Base Rate ($/kWh)': f"${rate:.4f}",
-                    'Adjustment ($/kWh)': f"${adj:.4f}",
-                    'Total Rate ($/kWh)': f"${total_rate:.4f}",
-                    'Months Present': months_present
-                })
-
-        if table_data:
-            display_df = pd.DataFrame(table_data)
-            st.dataframe(
-                display_df,
-                use_container_width=True,
-                hide_index=True,
-                column_config={
-                    "TOU Period": st.column_config.TextColumn(
-                        "TOU Period",
-                        width="medium",
-                    ),
-                    "Base Rate ($/kWh)": st.column_config.TextColumn(
-                        "Base Rate ($/kWh)",
-                        width="small",
-                    ),
-                    "Adjustment ($/kWh)": st.column_config.TextColumn(
-                        "Adjustment ($/kWh)", 
-                        width="small",
-                    ),
-                    "Total Rate ($/kWh)": st.column_config.TextColumn(
-                        "Total Rate ($/kWh)",
-                        width="small",
-                    ),
-                    "Months Present": st.column_config.TextColumn(
-                        "Months Present",
-                        width="large",
-                    )
-                }
-            )
-        else:
-            st.info("📝 **Note:** No energy rate structure found in this tariff JSON.")
-        
-        st.markdown("---")
-        
-        # TOU Labels Table - Editable
-        st.markdown("#### 🏷️ Time-of-Use Period Labels & Rates (Editable)")
         
         if energy_rates:
             # Initialize form values in session state if not exists or if we need to refresh from current tariff
@@ -2172,9 +2104,81 @@ def main():
                     st.success("✅ Changes applied! The visualizations will update to reflect your changes.")
                     st.rerun()
             
+            # Show current table (read-only) for reference
+            st.markdown("---")
+            st.markdown("#### 📊 Current Rate Table")
+            
+            # Create table data for display
+            table_data = []
+            weekday_schedule = current_tariff.get('energyweekdayschedule', [])
+            weekend_schedule = current_tariff.get('energyweekendschedule', [])
+            
+            current_energy_labels = current_tariff.get('energytoulabels', [])
+            current_energy_rates = current_tariff.get('energyratestructure', [])
+            
+            for i, rate_structure in enumerate(current_energy_rates):
+                if rate_structure:
+                    rate_info = rate_structure[0]
+                    rate = rate_info.get('rate', 0)
+                    adj = rate_info.get('adj', 0)
+                    total_rate = rate + adj
+
+                    if current_energy_labels and i < len(current_energy_labels):
+                        period_label = current_energy_labels[i]
+                    else:
+                        period_label = f"Period {i}"
+
+                    # Determine which months this TOU period appears in
+                    months_present = viewer._get_months_for_tou_period(i, weekday_schedule, weekend_schedule)
+
+                    table_data.append({
+                        'TOU Period': period_label,
+                        'Base Rate ($/kWh)': f"${rate:.4f}",
+                        'Adjustment ($/kWh)': f"${adj:.4f}",
+                        'Total Rate ($/kWh)': f"${total_rate:.4f}",
+                        'Months Present': months_present
+                    })
+
+            if table_data:
+                display_df = pd.DataFrame(table_data)
+                st.dataframe(
+                    display_df,
+                    use_container_width=True,
+                    hide_index=True,
+                    column_config={
+                        "TOU Period": st.column_config.TextColumn(
+                            "TOU Period",
+                            help="Time-of-Use period name",
+                            width="medium"
+                        ),
+                        "Base Rate ($/kWh)": st.column_config.TextColumn(
+                            "Base Rate ($/kWh)",
+                            help="Base energy rate before adjustments",
+                            width="small"
+                        ),
+                        "Adjustment ($/kWh)": st.column_config.TextColumn(
+                            "Adjustment ($/kWh)",
+                            help="Rate adjustments (surcharges, credits, etc.)",
+                            width="small"
+                        ),
+                        "Total Rate ($/kWh)": st.column_config.TextColumn(
+                            "Total Rate ($/kWh)",
+                            help="Final rate including all adjustments",
+                            width="small"
+                        ),
+                        "Months Present": st.column_config.TextColumn(
+                            "Months Present",
+                            help="Which months this TOU period is active in weekday/weekend schedules",
+                            width=300,
+                            max_chars=None
+                        )
+                    }
+                )
+        else:
+            st.info("📝 **Note:** No energy rate structure found in this tariff JSON.")
+        
         
         st.markdown("---")
-
         
         # Weekday Energy Rates - Full Width
         st.markdown("#### 📈 Weekday Energy Rates")
@@ -2210,81 +2214,11 @@ def main():
         else:
             current_demand_tariff = viewer.tariff
 
-        # Show current demand rate table first
-        st.markdown("#### 📊 Current Demand Rate Table")
+        # Demand Labels Table - Editable
+        st.markdown("#### 🏷️ Demand Period Labels & Rates (Editable)")
         
         demand_labels = current_demand_tariff.get('demandlabels', [])
         demand_rates = current_demand_tariff.get('demandratestructure', [])
-        
-        # Create table data for display
-        demand_table_data = []
-        demand_weekday_schedule = current_demand_tariff.get('demandweekdayschedule', [])
-        demand_weekend_schedule = current_demand_tariff.get('demandweekendschedule', [])
-        
-        current_demand_labels = current_demand_tariff.get('demandlabels', [])
-        current_demand_rates = current_demand_tariff.get('demandratestructure', [])
-        
-        if current_demand_rates:
-            # If we have labels, use them; otherwise create generic labels
-            if current_demand_labels:
-                labels_to_use = current_demand_labels
-            else:
-                labels_to_use = ["Demand Label Not In Tariff JSON"] * len(current_demand_rates)
-            
-            for i, label in enumerate(labels_to_use):
-                if i < len(current_demand_rates) and current_demand_rates[i]:
-                    rate_info = current_demand_rates[i][0]  # Get first tier
-                    rate = rate_info.get('rate', 0)
-                    adj = rate_info.get('adj', 0)
-                    total_rate = rate + adj
-                    
-                    # Determine which months this demand period appears in
-                    months_present = viewer._get_months_for_tou_period(i, demand_weekday_schedule, demand_weekend_schedule)
-                    
-                    demand_table_data.append({
-                        'Demand Period': label,
-                        'Base Rate ($/kW)': f"${rate:.4f}",
-                        'Adjustment ($/kW)': f"${adj:.4f}",
-                        'Total Rate ($/kW)': f"${total_rate:.4f}",
-                        'Months Present': months_present
-                    })
-            
-            if demand_table_data:
-                display_demand_df = pd.DataFrame(demand_table_data)
-                st.dataframe(
-                    display_demand_df,
-                    use_container_width=True,
-                    hide_index=True,
-                    column_config={
-                        "Demand Period": st.column_config.TextColumn(
-                            "Demand Period",
-                            width="medium",
-                        ),
-                        "Base Rate ($/kW)": st.column_config.TextColumn(
-                            "Base Rate ($/kW)",
-                            width="small",
-                        ),
-                        "Adjustment ($/kW)": st.column_config.TextColumn(
-                            "Adjustment ($/kW)", 
-                            width="small",
-                        ),
-                        "Total Rate ($/kW)": st.column_config.TextColumn(
-                            "Total Rate ($/kW)",
-                            width="small",
-                        ),
-                        "Months Present": st.column_config.TextColumn(
-                            "Months Present",
-                            width="large",
-                        )
-                    }
-                )
-        else:
-            st.info("📝 **Note:** No demand rate structure found in this tariff JSON.")
-        
-        st.markdown("---")
-        
-        # Demand Labels Table - Editable
-        st.markdown("#### 🏷️ Demand Period Labels & Rates (Editable)")
         
         if demand_rates:
             # Initialize demand form values in session state if not exists or if we need to refresh from current tariff
@@ -2421,11 +2355,81 @@ def main():
                     st.success("✅ Demand rate changes applied! The visualizations will update to reflect your changes.")
                     st.rerun()
             
+            # Show current demand table (read-only) for reference
+            st.markdown("---")
+            st.markdown("#### 📊 Current Demand Rate Table")
+            
+            # Create table data for display
+            demand_table_data = []
+            demand_weekday_schedule = current_demand_tariff.get('demandweekdayschedule', [])
+            demand_weekend_schedule = current_demand_tariff.get('demandweekendschedule', [])
+            
+            current_demand_labels = current_demand_tariff.get('demandlabels', [])
+            current_demand_rates = current_demand_tariff.get('demandratestructure', [])
+            
+            for i, rate_structure in enumerate(current_demand_rates):
+                if rate_structure:
+                    rate_info = rate_structure[0]
+                    rate = rate_info.get('rate', 0)
+                    adj = rate_info.get('adj', 0)
+                    total_rate = rate + adj
+
+                    if current_demand_labels and i < len(current_demand_labels):
+                        period_label = current_demand_labels[i]
+                    else:
+                        period_label = f"Demand Period {i}"
+
+                    # Determine which months this demand period appears in
+                    months_present = viewer._get_months_for_demand_period(i, demand_weekday_schedule, demand_weekend_schedule)
+
+                    demand_table_data.append({
+                        'Demand Period': period_label,
+                        'Base Rate ($/kW)': f"${rate:.4f}",
+                        'Adjustment ($/kW)': f"${adj:.4f}",
+                        'Total Rate ($/kW)': f"${total_rate:.4f}",
+                        'Months Present': months_present
+                    })
+
+            if demand_table_data:
+                display_demand_df = pd.DataFrame(demand_table_data)
+                st.dataframe(
+                    display_demand_df,
+                    use_container_width=True,
+                    hide_index=True,
+                    column_config={
+                        "Demand Period": st.column_config.TextColumn(
+                            "Demand Period",
+                            help="Demand charge period name",
+                            width="medium"
+                        ),
+                        "Base Rate ($/kW)": st.column_config.TextColumn(
+                            "Base Rate ($/kW)",
+                            help="Base demand rate before adjustments",
+                            width="small"
+                        ),
+                        "Adjustment ($/kW)": st.column_config.TextColumn(
+                            "Adjustment ($/kW)",
+                            help="Rate adjustments (surcharges, credits, etc.)",
+                            width="small"
+                        ),
+                        "Total Rate ($/kW)": st.column_config.TextColumn(
+                            "Total Rate ($/kW)",
+                            help="Final demand rate including all adjustments",
+                            width="small"
+                        ),
+                        "Months Present": st.column_config.TextColumn(
+                            "Months Present",
+                            help="Which months this demand period is active in weekday/weekend schedules",
+                            width=300,
+                            max_chars=None
+                        )
+                    }
+                )
         else:
             st.info("📝 **Note:** No demand rate structure found in this tariff JSON.")
-        
+
         st.markdown("---")
-        
+
         # Weekday Demand Rates - Full Width
         st.markdown("#### 📈 Weekday Demand Rates")
         
@@ -2460,70 +2464,11 @@ def main():
         else:
             current_flat_demand_tariff = viewer.tariff
 
-        # Show current flat demand table first
-        st.markdown("#### 📊 Current Monthly Flat Demand Rates")
+        # Flat Demand Rates - Editable
+        st.markdown("#### 🏷️ Monthly Flat Demand Rates (Editable)")
         
         flat_demand_rates = current_flat_demand_tariff.get('flatdemandstructure', [])
         flat_demand_months = current_flat_demand_tariff.get('flatdemandmonths', [])
-        
-        # Create table data for display
-        flat_demand_table_data = []
-        month_names_short = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-                           'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
-        
-        current_flat_demand_rates = current_flat_demand_tariff.get('flatdemandstructure', [])
-        current_flat_demand_months = current_flat_demand_tariff.get('flatdemandmonths', [])
-        
-        for month_idx in range(12):
-            period_idx = current_flat_demand_months[month_idx] if month_idx < len(current_flat_demand_months) else 0
-            if period_idx < len(current_flat_demand_rates) and current_flat_demand_rates[period_idx]:
-                rate = current_flat_demand_rates[period_idx][0].get('rate', 0)
-                adj = current_flat_demand_rates[period_idx][0].get('adj', 0)
-            else:
-                rate = 0
-                adj = 0
-            
-            total_rate = rate + adj
-            
-            flat_demand_table_data.append({
-                'Month': month_names_short[month_idx],
-                'Base Rate ($/kW)': f"${rate:.4f}",
-                'Adjustment ($/kW)': f"${adj:.4f}",
-                'Total Rate ($/kW)': f"${total_rate:.4f}"
-            })
-        
-        if flat_demand_table_data:
-            display_flat_demand_df = pd.DataFrame(flat_demand_table_data)
-            st.dataframe(
-                display_flat_demand_df,
-                use_container_width=True,
-                hide_index=True,
-                column_config={
-                    "Month": st.column_config.TextColumn(
-                        "Month",
-                        width="small",
-                    ),
-                    "Base Rate ($/kW)": st.column_config.TextColumn(
-                        "Base Rate ($/kW)",
-                        width="medium",
-                    ),
-                    "Adjustment ($/kW)": st.column_config.TextColumn(
-                        "Adjustment ($/kW)", 
-                        width="medium",
-                    ),
-                    "Total Rate ($/kW)": st.column_config.TextColumn(
-                        "Total Rate ($/kW)",
-                        width="medium",
-                    )
-                }
-            )
-        else:
-            st.info("📝 **Note:** No flat demand rate structure found in this tariff JSON.")
-        
-        st.markdown("---")
-        
-        # Flat Demand Rates - Editable
-        st.markdown("#### 🏷️ Monthly Flat Demand Rates (Editable)")
         
         if flat_demand_rates and flat_demand_months:
             # Initialize flat demand form values in session state
@@ -2648,6 +2593,67 @@ def main():
                     st.success("✅ Flat demand rate changes applied! The visualizations will update to reflect your changes.")
                     st.rerun()
             
+            # Show current flat demand table (read-only) for reference
+            st.markdown("---")
+            st.markdown("#### 📊 Current Monthly Flat Demand Rates")
+            
+            # Create table data for display
+            flat_demand_table_data = []
+            month_names_short = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+                               'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+            
+            current_flat_demand_rates = current_flat_demand_tariff.get('flatdemandstructure', [])
+            current_flat_demand_months = current_flat_demand_tariff.get('flatdemandmonths', [])
+            
+            for month_idx in range(12):
+                period_idx = current_flat_demand_months[month_idx] if month_idx < len(current_flat_demand_months) else 0
+                if period_idx < len(current_flat_demand_rates) and current_flat_demand_rates[period_idx]:
+                    rate = current_flat_demand_rates[period_idx][0].get('rate', 0)
+                    adj = current_flat_demand_rates[period_idx][0].get('adj', 0)
+                else:
+                    rate = 0
+                    adj = 0
+                
+                total_rate = rate + adj
+                
+                flat_demand_table_data.append({
+                    'Month': month_names_short[month_idx],
+                    'Base Rate ($/kW)': f"${rate:.4f}",
+                    'Adjustment ($/kW)': f"${adj:.4f}",
+                    'Total Rate ($/kW)': f"${total_rate:.4f}"
+                })
+            
+            if flat_demand_table_data:
+                display_flat_demand_df = pd.DataFrame(flat_demand_table_data)
+                st.dataframe(
+                    display_flat_demand_df,
+                    use_container_width=True,
+                    hide_index=True,
+                    column_config={
+                        "Month": st.column_config.TextColumn(
+                            "Month",
+                            help="Month of the year",
+                            width="small"
+                        ),
+                        "Base Rate ($/kW)": st.column_config.TextColumn(
+                            "Base Rate ($/kW)",
+                            help="Base flat demand rate before adjustments",
+                            width="medium"
+                        ),
+                        "Adjustment ($/kW)": st.column_config.TextColumn(
+                            "Adjustment ($/kW)",
+                            help="Rate adjustments (surcharges, credits, etc.)",
+                            width="medium"
+                        ),
+                        "Total Rate ($/kW)": st.column_config.TextColumn(
+                            "Total Rate ($/kW)",
+                            help="Final flat demand rate including all adjustments",
+                            width="medium"
+                        )
+                    }
+                )
+        else:
+            st.info("📝 **Note:** No flat demand rate structure found in this tariff JSON.")
         
         st.markdown("---")
         
@@ -2662,6 +2668,28 @@ def main():
             st.plotly_chart(viewer.plot_flat_demand_rates(dark_mode=dark_mode), use_container_width=True)
         
     with tab4:
+        st.markdown("### 📈 Combined Rate Analysis")
+        st.markdown("**Energy vs Demand Rate Comparison**")
+        
+        # Use modified tariff if available
+        if st.session_state.has_modifications and st.session_state.modified_tariff:
+            temp_viewer = create_temp_viewer_with_modified_tariff(st.session_state.modified_tariff)
+            comparison_viewer = temp_viewer
+        else:
+            comparison_viewer = viewer
+        
+        # Create comparison chart
+        comparison_data = pd.DataFrame({
+            'Month': comparison_viewer.months,
+            'Avg Energy Rate ($/kWh)': [comparison_viewer.weekday_df.iloc[i].mean() for i in range(12)],
+            'Avg Demand Rate ($/kW)': [comparison_viewer.demand_weekday_df.iloc[i].mean() for i in range(12)]
+        })
+        fig = px.line(comparison_data, x='Month', y=['Avg Energy Rate ($/kWh)', 'Avg Demand Rate ($/kW)'],
+                     title="Monthly Average Rates Comparison", markers=True)
+        fig.update_layout(height=400)
+        st.plotly_chart(fig, use_container_width=True)
+        
+    with tab5:
         st.markdown("### 💰 Utility Cost Calculator")
         st.markdown("Calculate monthly utility bills by applying the selected tariff to a load profile.")
         
@@ -2879,7 +2907,7 @@ def main():
                 st.error(f"❌ Calculation error: {str(e)}")
                 st.exception(e)
                     
-    with tab5:
+    with tab6:
         st.markdown("### 🔧 Load Profile Generator")
         st.markdown("Create custom load profiles with specified characteristics and TOU energy distribution.")
         
@@ -3152,7 +3180,7 @@ def main():
                         st.error(f"❌ Error generating load profile: {str(e)}")
                         st.exception(e)
                         
-    with tab6:
+    with tab7:
         st.markdown("### 📊 Load Profile Analysis")
         st.markdown("Analyze existing load profiles to understand consumption patterns and characteristics.")
         
