@@ -1,0 +1,87 @@
+{
+  "items": [
+    {
+      "label": "6757525f259975f54b0eccbf",
+      "uri": "https://apps.openei.org/IURDB/rate/view/6757525f259975f54b0eccbf",
+      "revisions": [
+        1733750767,
+        1733751251
+      ],
+      "approved": true,
+      "is_default": false,
+      "utility": "San Diego Gas & Electric Company (SDG&E)",
+      "eiaid": 17609,
+      "name": "Electric Vehicle High Power Rate",
+      "startdate": 1727762400,
+      "supersedes": "651f082e01de5efa5500e4ec",
+      "sector": "Commercial",
+      "servicetype": "Bundled",
+      "description": "Add Description",
+      "source": "https://tariffsprd.sdge.com/63203910-ca2c-42c7-b523-f1e92c0bd48b",
+      "sourceparent": "https://www.sdge.com/rates-and-regulations/current-and-effective-tariffs",
+      "demandunits": "kW",
+      "voltagecategory": "Secondary",
+      "phasewiring": "Single Phase",
+      "flatdemandunit": "kW",
+      "flatdemandstructure": [
+        [
+          {
+            "rate": 4.834,
+            "adj": 0
+          }
+        ]
+      ],
+      "flatdemandmonths": [0,0,0,0,0,0,0,0,0,0,0,0],
+      "demandrateunit": "kW",
+      "demandreactivepowercharge": 0.52,
+      "energyratestructure": [
+        [ { "unit": "kWh", "rate": 0.18129, "adj": 0.10416 } ],
+        [ { "unit": "kWh", "rate": 0.06025, "adj": 0.06253 } ],
+        [ { "unit": "kWh", "rate": 0.06025, "adj": 0.05526 } ],
+        [ { "unit": "kWh", "rate": 0.18129, "adj": 0.11594 } ],
+        [ { "unit": "kWh", "rate": 0.06025, "adj": 0.06504 } ],
+        [ { "unit": "kWh", "rate": 0.06025, "adj": 0.05025 } ]
+      ],
+      "energytoulabels": [
+        "Summer On-Peak",
+        "Summer Off-Peak",
+        "Summer Super Off-Peak",
+        "Winter On-Peak",
+        "Winter Off-Peak",
+        "Winter Super Off-Peak"
+      ],
+      "energyweekdayschedule": [
+        [5,5,5,5,5,5, 4,4,4,4,4,4,4,4,4,4, 3,3,3,3,3, 4,4,4],
+        [5,5,5,5,5,5, 4,4,4,4,4,4,4,4,4,4, 3,3,3,3,3, 4,4,4],
+        [5,5,5,5,5,5, 4,4,4,4, 5,5,5,5, 4,4, 3,3,3,3,3, 4,4,4],
+        [5,5,5,5,5,5, 4,4,4,4, 5,5,5,5, 4,4, 3,3,3,3,3, 4,4,4],
+        [5,5,5,5,5,5, 4,4,4,4,4,4,4,4,4,4, 3,3,3,3,3, 4,4,4],
+        [2,2,2,2,2,2, 1,1,1,1,1,1,1,1,1,1, 0,0,0,0,0, 1,1,1],
+        [2,2,2,2,2,2, 1,1,1,1,1,1,1,1,1,1, 0,0,0,0,0, 1,1,1],
+        [2,2,2,2,2,2, 1,1,1,1,1,1,1,1,1,1, 0,0,0,0,0, 1,1,1],
+        [2,2,2,2,2,2, 1,1,1,1,1,1,1,1,1,1, 0,0,0,0,0, 1,1,1],
+        [2,2,2,2,2,2, 1,1,1,1,1,1,1,1,1,1, 0,0,0,0,0, 1,1,1],
+        [5,5,5,5,5,5, 4,4,4,4,4,4,4,4,4,4, 3,3,3,3,3, 4,4,4],
+        [5,5,5,5,5,5, 4,4,4,4,4,4,4,4,4,4, 3,3,3,3,3, 4,4,4]
+      ],
+        "energyweekendschedule": [
+        [5,5,5,5,5,5, 5,5,5,5,5,5,5,5, 4,4, 3,3,3,3,3, 4,4,4],
+        [5,5,5,5,5,5, 5,5,5,5,5,5,5,5, 4,4, 3,3,3,3,3, 4,4,4],
+        [5,5,5,5,5,5, 5,5,5,5,5,5,5,5, 4,4, 3,3,3,3,3, 4,4,4],
+        [5,5,5,5,5,5, 5,5,5,5,5,5,5,5, 4,4, 3,3,3,3,3, 4,4,4],
+        [5,5,5,5,5,5, 5,5,5,5,5,5,5,5, 4,4, 3,3,3,3,3, 4,4,4],
+        [2,2,2,2,2,2, 2,2,2,2,2,2,2,2, 1,1, 0,0,0,0,0, 1,1,1],
+        [2,2,2,2,2,2, 2,2,2,2,2,2,2,2, 1,1, 0,0,0,0,0, 1,1,1],
+        [2,2,2,2,2,2, 2,2,2,2,2,2,2,2, 1,1, 0,0,0,0,0, 1,1,1],
+        [2,2,2,2,2,2, 2,2,2,2,2,2,2,2, 1,1, 0,0,0,0,0, 1,1,1],
+        [2,2,2,2,2,2, 2,2,2,2,2,2,2,2, 1,1, 0,0,0,0,0, 1,1,1],
+        [5,5,5,5,5,5, 5,5,5,5,5,5,5,5, 4,4, 3,3,3,3,3, 4,4,4],
+        [5,5,5,5,5,5, 5,5,5,5,5,5,5,5, 4,4, 3,3,3,3,3, 4,4,4]
+      ],
+      "energycomments": "Insert Energy Comments",
+      "fixedchargefirstmeter": 766.91,
+      "fixedchargeunits": "$/month",
+      "country": "USA"
+    }
+  ]
+}

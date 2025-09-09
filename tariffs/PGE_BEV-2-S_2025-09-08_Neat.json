@@ -1,0 +1,99 @@
+{
+  "items": [
+    {
+      "label": "6757525f259975f54b0eccbf",
+      "uri": "https://apps.openei.org/IURDB/rate/view/6757525f259975f54b0eccbf",
+      "revisions": [
+        1733750767,
+        1733751251
+      ],
+      "approved": true,
+      "is_default": false,
+      "utility": "Pacific Gas & Electric Co",
+      "eiaid": 17609,
+      "name": "BEV-2-S Business Electric Vehicle (Secondary Voltage)",
+      "startdate": 1727762400,
+      "supersedes": "651f082e01de5efa5500e4ec",
+      "sector": "Commercial",
+      "servicetype": "Bundled",
+      "description": "Add Description",
+      "source": "https://www.pge.com/tariffs/assets/pdf/tariffbook/ELEC_SCHEDS_BEV.pdf",
+      "sourceparent": "https://www.pge.com/tariffs/index.page",
+      "demandunits": "kW",
+      "voltagecategory": "Secondary",
+      "phasewiring": "Single Phase",
+      "flatdemandunit": "kW",
+      "flatdemandstructure": [
+        [
+          {
+            "rate": 1.91,
+            "adj": 0
+          }
+        ]
+      ],
+      "flatdemandmonths": [0,0,0,0,0,0,0,0,0,0,0,0],
+      "demandrateunit": "kW",
+      "demandreactivepowercharge": 0.52,
+      "energyratestructure": [
+        [
+          {
+            "unit": "kWh",
+            "rate": 0.18081,
+            "adj": 0.00
+          }
+        ],
+        [
+          {
+            "unit": "kWh",
+            "rate": 0.15754,
+            "adj": 0.00
+          }
+        ],
+        [
+          {
+            "unit": "kWh",
+            "rate": 0.39404,
+            "adj": 0.00
+          }
+        ]
+      ],
+      "energytoulabels": [
+        "Off-Peak",
+        "Super Off-Peak",
+        "Peak"
+      ],
+      "energyweekdayschedule": [
+        [0,0,0,0,0,0,0,0,0, 1,1,1,1,1, 0,0, 2,2,2,2,2, 0,0,0],
+        [0,0,0,0,0,0,0,0,0, 1,1,1,1,1, 0,0, 2,2,2,2,2, 0,0,0],
+        [0,0,0,0,0,0,0,0,0, 1,1,1,1,1, 0,0, 2,2,2,2,2, 0,0,0],
+        [0,0,0,0,0,0,0,0,0, 1,1,1,1,1, 0,0, 2,2,2,2,2, 0,0,0],
+        [0,0,0,0,0,0,0,0,0, 1,1,1,1,1, 0,0, 2,2,2,2,2, 0,0,0],
+        [0,0,0,0,0,0,0,0,0, 1,1,1,1,1, 0,0, 2,2,2,2,2, 0,0,0],
+        [0,0,0,0,0,0,0,0,0, 1,1,1,1,1, 0,0, 2,2,2,2,2, 0,0,0],
+        [0,0,0,0,0,0,0,0,0, 1,1,1,1,1, 0,0, 2,2,2,2,2, 0,0,0],
+        [0,0,0,0,0,0,0,0,0, 1,1,1,1,1, 0,0, 2,2,2,2,2, 0,0,0],
+        [0,0,0,0,0,0,0,0,0, 1,1,1,1,1, 0,0, 2,2,2,2,2, 0,0,0],
+        [0,0,0,0,0,0,0,0,0, 1,1,1,1,1, 0,0, 2,2,2,2,2, 0,0,0],
+        [0,0,0,0,0,0,0,0,0, 1,1,1,1,1, 0,0, 2,2,2,2,2, 0,0,0]
+      ],
+      "energyweekendschedule": [
+        [0,0,0,0,0,0,0,0,0, 1,1,1,1,1, 0,0, 2,2,2,2,2, 0,0,0],
+        [0,0,0,0,0,0,0,0,0, 1,1,1,1,1, 0,0, 2,2,2,2,2, 0,0,0],
+        [0,0,0,0,0,0,0,0,0, 1,1,1,1,1, 0,0, 2,2,2,2,2, 0,0,0],
+        [0,0,0,0,0,0,0,0,0, 1,1,1,1,1, 0,0, 2,2,2,2,2, 0,0,0],
+        [0,0,0,0,0,0,0,0,0, 1,1,1,1,1, 0,0, 2,2,2,2,2, 0,0,0],
+        [0,0,0,0,0,0,0,0,0, 1,1,1,1,1, 0,0, 2,2,2,2,2, 0,0,0],
+        [0,0,0,0,0,0,0,0,0, 1,1,1,1,1, 0,0, 2,2,2,2,2, 0,0,0],
+        [0,0,0,0,0,0,0,0,0, 1,1,1,1,1, 0,0, 2,2,2,2,2, 0,0,0],
+        [0,0,0,0,0,0,0,0,0, 1,1,1,1,1, 0,0, 2,2,2,2,2, 0,0,0],
+        [0,0,0,0,0,0,0,0,0, 1,1,1,1,1, 0,0, 2,2,2,2,2, 0,0,0],
+        [0,0,0,0,0,0,0,0,0, 1,1,1,1,1, 0,0, 2,2,2,2,2, 0,0,0],
+        [0,0,0,0,0,0,0,0,0, 1,1,1,1,1, 0,0, 2,2,2,2,2, 0,0,0]
+      ],
+      "energycomments": "Rate = Delivery + Generation || Adjustments included in rate =  New System Generation Charge + Nuclear Decommissioning Charge +  Public Purpose Programs Charge + Conservation Incentive Adjustment +  Wildlife Fund Non-Bypassable Charge + PUC Reimbursement Fee + Department of Water Resources Refund || Additional Adjustments = Fixed Recovery Charge",
+      "fixedchargefirstmeter": 447.44,
+      "fixedchargeunits": "$/month",
+      "country": "USA"
+    }
+  ]
+}
