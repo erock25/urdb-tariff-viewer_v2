@@ -1,3 +1,9 @@
+"""
+Calculation engine for URDB Tariff Viewer.
+
+This module contains the core utility bill calculation logic and validation functions.
+"""
+
 import pandas as pd
 import numpy as np
 import json
@@ -6,13 +12,8 @@ import re
 from datetime import datetime
 from typing import Dict, List, Optional, Union
 
-class InvalidTariffError(Exception):
-    """Raised when tariff data is invalid or missing required fields"""
-    pass
+from src.utils.exceptions import InvalidTariffError, InvalidLoadProfileError
 
-class InvalidLoadProfileError(Exception):
-    """Raised when load profile data is invalid or missing required fields"""
-    pass
 
 def validate_tariff(tariff: Dict, default_voltage: float = 480.0) -> None:
     """Validate that tariff has required fields and structure
@@ -81,6 +82,7 @@ def validate_tariff(tariff: Dict, default_voltage: float = 480.0) -> None:
     if max_voltage < default_voltage:
         print(f"WARNING: Tariff maximum voltage ({max_voltage}V) is lower than default voltage ({default_voltage}V)")
 
+
 def get_rate_for_consumption(structure: List[Dict], consumption: float) -> tuple:
     """Calculate rate and adjustment for given consumption across tiers
     Returns (total_charge, total_adj)"""
@@ -103,6 +105,7 @@ def get_rate_for_consumption(structure: List[Dict], consumption: float) -> tuple
             break
             
     return total_charge, total_adj
+
 
 def get_rate_for_demand(structure: List[Dict], demand: float, reactive_power_charge: float = 0.0, power_factor: float = 0.95) -> tuple:
     """Calculate demand rate and adjustment for given demand across tiers
@@ -148,6 +151,7 @@ def get_rate_for_demand(structure: List[Dict], demand: float, reactive_power_cha
             
     return total_charge, total_adj
 
+
 def extract_adjustments(tariff: Dict) -> Dict[str, float]:
     """Extract rate adjustments from tariff
     Returns a dictionary of adjustments with their values and types (per_kwh or per_kw)"""
@@ -186,12 +190,14 @@ def extract_adjustments(tariff: Dict) -> Dict[str, float]:
             
     return adjustments
 
+
 def ensure_integer_columns(df: pd.DataFrame, integer_columns: List[str]) -> pd.DataFrame:
     """Ensure specified columns are integers"""
     for col in integer_columns:
         if col in df.columns:
             df[col] = df[col].astype(int)
     return df
+
 
 def load_profile_csv(path: str) -> pd.DataFrame:
     """Load and validate load profile data"""
@@ -225,6 +231,7 @@ def load_profile_csv(path: str) -> pd.DataFrame:
     except Exception as e:
         raise InvalidLoadProfileError(f"Error loading load profile: {str(e)}")
 
+
 def load_urdb_json(path: str) -> Dict:
     """Load and validate tariff data"""
     try:
@@ -256,6 +263,7 @@ def load_urdb_json(path: str) -> Dict:
         raise
     except Exception as e:
         raise InvalidTariffError(f"Error loading tariff: {str(e)}")
+
 
 def calculate_monthly_bill(load_profile_path: str, urdb_json_path: str, save_csv: bool = False, default_voltage: float = 480.0) -> pd.DataFrame:
     """Calculate monthly utility bill with detailed breakdown of charges
@@ -595,7 +603,8 @@ def calculate_monthly_bill(load_profile_path: str, urdb_json_path: str, save_csv
 
     return summary_df
 
-def calculate_utility_costs_for_app(tariff_data: Dict, load_profile_path: str) -> pd.DataFrame:
+
+def calculate_utility_costs_for_app(tariff_data: Dict, load_profile_path: str, default_voltage: float = 480.0) -> pd.DataFrame:
     """Simplified function for app integration that takes tariff data directly
     
     Parameters:
@@ -604,6 +613,8 @@ def calculate_utility_costs_for_app(tariff_data: Dict, load_profile_path: str) -
         The tariff data dictionary (already loaded)
     load_profile_path : str
         Path to CSV file containing load profile data
+    default_voltage : float, optional
+        Default voltage level in volts (default: 480.0)
         
     Returns:
     --------
@@ -626,7 +637,7 @@ def calculate_utility_costs_for_app(tariff_data: Dict, load_profile_path: str) -
         
         try:
             # Calculate using existing function
-            full_results = calculate_monthly_bill(load_profile_path, temp_tariff_path, save_csv=False)
+            full_results = calculate_monthly_bill(load_profile_path, temp_tariff_path, save_csv=False, default_voltage=default_voltage)
             
             # Simplify results for app display
             simplified_results = full_results[[
@@ -665,10 +676,12 @@ def calculate_utility_costs_for_app(tariff_data: Dict, load_profile_path: str) -
     except Exception as e:
         raise Exception(f"Error calculating utility costs: {str(e)}")
 
-if __name__ == "__main__":
+
+def main():
+    """Main function for standalone execution (used for testing)."""
     # Example file paths (adjust as needed)
-    load_profile_path = "load-profiles/ev_fast_charging_load_profile_2025.csv"
-    urdb_json_path = "tariffs/FPL_GSLD1.json"
+    load_profile_path = "data/load_profiles/ev_fast_charging_load_profile_2025.csv"
+    urdb_json_path = "data/tariffs/FPL_GSLD1.json"
     try:
         # Enable pandas display of data types for debugging
         pd.set_option('display.max_columns', None)
@@ -700,3 +713,7 @@ if __name__ == "__main__":
         print(f"Unexpected error: {str(e)}")
         import traceback
         traceback.print_exc()
+
+
+if __name__ == "__main__":
+    main()

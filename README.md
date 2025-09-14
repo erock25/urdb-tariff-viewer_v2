@@ -1,6 +1,16 @@
-# URDB Tariff Viewer & Editor
+# URDB Tariff Viewer & Editor v2.0
 
-A comprehensive Streamlit application for viewing and editing utility rate structures from the U.S. Utility Rate Database (URDB). This application provides interactive visualizations and editing capabilities for both energy and demand charge rate structures.
+A comprehensive, modular Streamlit application for viewing and editing utility rate structures from the U.S. Utility Rate Database (URDB). This application provides interactive visualizations, editing capabilities, cost calculations, and load profile generation for utility rate analysis.
+
+## ✨ New in Version 2.0
+
+- **🏗️ Modular Architecture**: Complete restructure for better team collaboration and maintainability
+- **🧪 Comprehensive Testing**: Full test suite with pytest integration
+- **💰 Enhanced Cost Calculator**: Advanced utility bill calculations with load profile analysis
+- **🔧 Load Profile Generator**: Create synthetic load profiles aligned with TOU periods
+- **📊 Advanced Analytics**: Detailed load profile analysis and comparison tools
+- **🎨 Modern UI**: Updated styling with improved user experience
+- **⚙️ Better Configuration**: Centralized settings and environment management
 
 ## Features
 
@@ -16,34 +26,64 @@ A comprehensive Streamlit application for viewing and editing utility rate struc
 - **Demand Rate Editing**: Modify both time-of-use and flat demand rates
 - **Demand Charge Details**: Comprehensive information about demand charge structures
 
+### 💰 Utility Cost Calculator
+- **Bill Calculations**: Calculate annual utility costs using real load profiles
+- **Cost Breakdowns**: Detailed analysis of energy, demand, and fixed charges
+- **Multiple Tariff Comparison**: Compare costs across different rate schedules
+- **Export Results**: Download calculation results in multiple formats
+
+### 🔧 Load Profile Generator
+- **Synthetic Profiles**: Generate realistic load profiles based on TOU periods
+- **Customizable Parameters**: Adjust load factor, seasonal variation, and daily patterns
+- **Validation Tools**: Ensure generated profiles meet specified criteria
+- **Export Capabilities**: Save generated profiles for use in cost calculations
+
 ### 📊 Advanced Visualizations
-- **Combined Analysis**: Side-by-side comparison of energy vs demand rates
-- **Rate Distribution**: Histograms showing the distribution of rates
-- **Monthly Comparisons**: Line charts comparing average monthly rates
+- **Interactive Heatmaps**: Modern, responsive rate visualizations
+- **Load Duration Curves**: Analyze load profile characteristics
+- **Cost Comparison Charts**: Visual comparison of tariff options
 - **Dark Mode Support**: Toggle between light and dark themes
 
-### 🎛️ Interactive Controls
-- **Rate Type Selection**: Choose between energy and demand rate editing
-- **Time Selection**: Select specific months and hours for rate modifications
-- **Day Type Selection**: Edit rates for weekdays or weekends
-- **Real-time Updates**: See changes immediately in the visualizations
-
 ## Installation
+
+### Quick Start
 
 1. Clone the repository:
 ```bash
 git clone <repository-url>
-cd URDB_JSON_Viewer
+cd URDB_JSON_Viewer_v2
 ```
 
 2. Install dependencies:
 ```bash
-pip install -r requirements.txt
+pip install -r requirements/base.txt
 ```
 
 3. Run the application:
 ```bash
-streamlit run app.py
+streamlit run src/main.py
+```
+
+### Development Setup
+
+For development with testing and code quality tools:
+
+```bash
+# Install development dependencies
+pip install -r requirements/dev.txt
+
+# Run tests
+pytest
+
+# Run with coverage
+pytest --cov=src --cov-report=html
+
+# Format code
+black src/ tests/
+isort src/ tests/
+
+# Type checking
+mypy src/
 ```
 
 ## Usage

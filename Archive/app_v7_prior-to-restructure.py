@@ -2697,19 +2697,21 @@ def main():
                     # Display results summary
                     st.markdown("#### 📊 Monthly Utility Cost Summary")
 
-                    # Create summary metrics
+                    # Create summary metrics for monthly focus
                     total_annual_cost = results['total_charge'].sum()
                     total_annual_kwh = results['total_kwh'].sum()
                     avg_monthly_cost = results['total_charge'].mean()
+                    max_monthly_cost = results['total_charge'].max()
+                    min_monthly_cost = results['total_charge'].min()
                     effective_rate_per_kwh = total_annual_cost / total_annual_kwh if total_annual_kwh > 0 else 0
 
                     col1, col2, col3, col4 = st.columns(4)
                     with col1:
-                        st.metric("Annual Total Cost", f"${total_annual_cost:,.0f}")
-                    with col2:
-                        st.metric("Annual Total kWh", f"{total_annual_kwh:,.0f}")
-                    with col3:
                         st.metric("Average Monthly Cost", f"${avg_monthly_cost:,.0f}")
+                    with col2:
+                        st.metric("Highest Monthly Cost", f"${max_monthly_cost:,.0f}")
+                    with col3:
+                        st.metric("Lowest Monthly Cost", f"${min_monthly_cost:,.0f}")
                     with col4:
                         st.metric("Effective Rate $/kWh", f"${effective_rate_per_kwh:.4f}")
                     
@@ -2783,7 +2785,7 @@ def main():
                     
                     fig_costs = go.Figure()
                     
-                    # Add stacked bar chart for cost breakdown
+                    # Add grouped bar chart for cost breakdown
                     fig_costs.add_trace(go.Bar(
                         x=results['month_name'],
                         y=results['total_energy_cost'],
@@ -2810,7 +2812,7 @@ def main():
                     
                     fig_costs.update_layout(
                         title=dict(
-                            text=f'<b>Monthly Utility Cost Breakdown</b><br><span style="font-size: 0.75em; color: #6b7280;">{viewer.utility_name} - {viewer.rate_name}</span>',
+                            text=f'<b>Monthly Cost Breakdown by Month</b><br><span style="font-size: 0.75em; color: #6b7280;">{viewer.utility_name} - {viewer.rate_name}</span>',
                             font=dict(size=20, color='#0f172a' if not dark_mode else '#f1f5f9'),
                             x=0.5,
                             xanchor='center'
