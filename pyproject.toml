@@ -47,9 +47,9 @@ docs = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/yourusername/urdb-tariff-viewer"
-Repository = "https://github.com/yourusername/urdb-tariff-viewer.git"
-Issues = "https://github.com/yourusername/urdb-tariff-viewer/issues"
+Homepage = "https://github.com/erock25/urdb-tariff-viewer_v2"
+Repository = "https://github.com/erock25/urdb-tariff-viewer_v2.git"
+Issues = "https://github.com/erock25/urdb-tariff-viewer_v2/issues"
 
 [project.scripts]
 urdb-viewer = "src.main:main"
