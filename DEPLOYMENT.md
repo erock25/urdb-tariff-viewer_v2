@@ -25,7 +25,7 @@ This guide will help you deploy your Streamlit URDB Tariff Viewer application to
    git commit -m "Initial commit - URDB Tariff Viewer"
 
    # Create repository on GitHub and push
-   git remote add origin https://github.com/YOUR_USERNAME/YOUR_REPO_NAME.git
+   git remote add origin https://github.com/erock25/urdb-tariff-viewer_v2.git
    git push -u origin main
    ```
 
@@ -33,10 +33,10 @@ This guide will help you deploy your Streamlit URDB Tariff Viewer application to
    - Go to [share.streamlit.io](https://share.streamlit.io)
    - Connect your GitHub account
    - Select your repository
-   - Set main file path to `app.py`
+   - Set main file path to `src/main.py`
    - Click "Deploy"
 
-3. **Your app will be live at:** `https://YOUR_REPO_NAME-YOUR_USERNAME.streamlit.app`
+3. **Your app will be live at:** `https://urdb-tariff-viewer-v2-erock25.streamlit.app`
 
 ### Option 2: Heroku (Good Alternative)
 
@@ -58,7 +58,7 @@ This guide will help you deploy your Streamlit URDB Tariff Viewer application to
 
 3. **Create Procfile**
    ```bash
-   echo "web: streamlit run app.py --server.port $PORT --server.headless true" > Procfile
+   echo "web: streamlit run src/main.py --server.port $PORT --server.headless true" > Procfile
    ```
 
 4. **Deploy**

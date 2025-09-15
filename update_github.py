@@ -62,7 +62,7 @@ def update_github(commit_message):
 
     print("\n🎉 Project updated successfully on GitHub!")
     print("📱 Streamlit Cloud will automatically redeploy your app.")
-    print("\n🔗 Your app URL: https://urdb-tariff-viewer-erock25.streamlit.app")
+    print("\n🔗 Your app URL: https://urdb-tariff-viewer-v2-erock25.streamlit.app")
 
     return True
 

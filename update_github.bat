@@ -31,7 +31,7 @@ for /f %%i in ('git status --porcelain 2^>nul') do (
 echo ℹ️  No changes detected. Nothing to update.
 echo.
 echo 💡 To make changes:
-echo    1. Edit your files (app.py, etc.)
+echo    1. Edit your files (src/main.py, etc.)
 echo    2. Save the changes
 echo    3. Run this script again
 echo.
@@ -80,7 +80,7 @@ echo.
 echo 🎉 SUCCESS! Project updated on GitHub!
 echo =======================================
 echo 📱 Streamlit Cloud will automatically redeploy your app
-echo 🔗 Your app URL: https://urdb-tariff-viewer-erock25.streamlit.app
+echo 🔗 Your app URL: https://urdb-tariff-viewer-v2-erock25.streamlit.app
 echo.
 echo 💡 The redeployment usually takes 2-5 minutes
 echo.

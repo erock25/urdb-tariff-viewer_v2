@@ -19,11 +19,11 @@ from pathlib import Path
 def check_files():
     """Check if all required files exist"""
     required_files = [
-        'app.py',
+        'src/main.py',
         'requirements.txt',
-        'tariffs/',
-        'load_profiles/',
-        'calculate_utility_bill.py'
+        'data/tariffs/',
+        'data/load_profiles/',
+        'src/services/calculation_engine.py'
     ]
 
     optional_files = [
@@ -77,12 +77,12 @@ def validate_app():
     try:
         sys.path.append('.')
         # We can't actually run the app here, but we can check syntax
-        with open('app.py', 'r', encoding='utf-8') as f:
+        with open('src/main.py', 'r', encoding='utf-8') as f:
             code = f.read()
-        compile(code, 'app.py', 'exec')
+        compile(code, 'src/main.py', 'exec')
         print("✅ App syntax is valid")
     except SyntaxError as e:
-        print(f"❌ Syntax error in app.py: {e}")
+        print(f"❌ Syntax error in src/main.py: {e}")
         return False
     except UnicodeDecodeError:
         print("⚠️  Could not validate syntax due to encoding issues, but app should still work")
@@ -97,7 +97,7 @@ def create_deployment_files():
     # Create Procfile for Heroku
     if not Path('Procfile').exists():
         with open('Procfile', 'w') as f:
-            f.write("web: streamlit run app.py --server.port $PORT --server.headless true --server.address 0.0.0.0")
+            f.write("web: streamlit run src/main.py --server.port $PORT --server.headless true --server.address 0.0.0.0")
         print("✅ Created Procfile")
 
     # Create .streamlit directory and config if missing
