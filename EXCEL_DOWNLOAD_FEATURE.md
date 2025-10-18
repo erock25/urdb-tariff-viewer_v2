@@ -1,7 +1,7 @@
-# Energy Rates Excel Download Feature
+# Tariff Rates Excel Download Feature
 
 ## Overview
-Added functionality to download energy rate data as an Excel file with multiple sheets from the Energy Rates tab.
+Added functionality to download both energy and demand rate data as an Excel file with multiple sheets from the Energy Rates tab.
 
 ## Changes Made
 
@@ -12,7 +12,7 @@ Added functionality to download energy rate data as an Excel file with multiple 
 ### 2. Helper Functions Created
 - **File**: `src/utils/helpers.py`
 - **Functions**:
-  - `generate_energy_rates_excel(tariff_viewer, year=2025)` - Main function to generate Excel file with 4 sheets
+  - `generate_energy_rates_excel(tariff_viewer, year=2025)` - Main function to generate Excel file with 8 sheets (energy + demand)
   - `generate_energy_rate_timeseries(tariff_viewer, year=2025)` - Generates full year of 15-minute interval timeseries data
 
 ### 3. UI Component Updates
@@ -24,10 +24,12 @@ Added functionality to download energy rate data as an Excel file with multiple 
 
 ## Excel File Structure
 
-The generated Excel file contains **4 sheets**:
+The generated Excel file contains **8 sheets** with both energy and demand rate data:
 
-### Sheet 1: Rate Table
-- Contains data from "📊 Current Rate Table"
+### ENERGY RATES (Sheets 1-4)
+
+#### Sheet 1: Energy Rate Table
+- Contains data from "📊 Current Rate Table" (Energy)
 - Columns:
   - TOU Period
   - Base Rate ($/kWh)
@@ -35,17 +37,17 @@ The generated Excel file contains **4 sheets**:
   - Total Rate ($/kWh)
   - Months Present
 
-### Sheet 2: Weekday Rates
+#### Sheet 2: Weekday Energy Rates
 - 12x24 matrix (Months x Hours)
 - Rows: Jan, Feb, Mar, Apr, May, Jun, Jul, Aug, Sep, Oct, Nov, Dec
 - Columns: 00:00 through 23:00 (hourly)
 - Values: Energy rates in $/kWh
 
-### Sheet 3: Weekend Rates
-- Same structure as Weekday Rates
+#### Sheet 3: Weekend Energy Rates
+- Same structure as Weekday Energy Rates
 - Contains weekend-specific energy rates
 
-### Sheet 4: Timeseries
+#### Sheet 4: Energy Timeseries
 - Full year of data at 15-minute intervals
 - Columns:
   - `timestamp`: Date and time (YYYY-MM-DD HH:MM:SS)
@@ -56,21 +58,50 @@ The generated Excel file contains **4 sheets**:
   - Weekday vs weekend
 - Approximately 35,040 rows (365 days × 24 hours × 4 intervals per hour)
 
+### DEMAND RATES (Sheets 5-8)
+
+#### Sheet 5: Demand Rate Table
+- Contains data from "📊 Current Demand Rate Table"
+- Columns:
+  - Demand Period
+  - Base Rate ($/kW)
+  - Adjustment ($/kW)
+  - Total Rate ($/kW)
+  - Months Present
+
+#### Sheet 6: Weekday Demand Rates
+- 12x24 matrix (Months x Hours)
+- Rows: Jan, Feb, Mar, Apr, May, Jun, Jul, Aug, Sep, Oct, Nov, Dec
+- Columns: 00:00 through 23:00 (hourly)
+- Values: Demand rates in $/kW
+
+#### Sheet 7: Weekend Demand Rates
+- Same structure as Weekday Demand Rates
+- Contains weekend-specific demand rates
+
+#### Sheet 8: Flat Demand Rates
+- Contains data from "📊 Seasonal/Monthly Flat Demand Rates"
+- Rows: Jan, Feb, Mar, Apr, May, Jun, Jul, Aug, Sep, Oct, Nov, Dec
+- Column: Rate ($/kW)
+- Values: Monthly flat demand charges
+
 ## Usage
 
 1. Navigate to the **⚡ Energy Rates** tab
-2. At the top of the page, you'll see **📥 Download Energy Rates Data** section
+2. At the bottom of the page, you'll see **📥 Download Rate Data (Energy & Demand)** section
 3. Select the year for timeseries generation (default: current year)
 4. Click **📥 Download Excel File** button
-5. Excel file will be downloaded with filename format: `Energy_Rates_{Utility}_{Rate}_{Date}.xlsx`
+5. Excel file will be downloaded with filename format: `Tariff_Rates_{Utility}_{Rate}_{Date}.xlsx`
 
 ## Features
 
-- **Dynamic Year Selection**: Choose any year from 2020-2050 for timeseries data
+- **Comprehensive Data Export**: Includes both energy and demand rate information
+- **Dynamic Year Selection**: Choose any year from 2020-2050 for energy timeseries data
 - **Smart Filename**: Automatically generates clean filename based on utility name, rate name, and current date
 - **Error Handling**: Graceful error handling with user-friendly error messages
-- **Info Panel**: Shows description of what each sheet contains
+- **Info Panel**: Shows description of what each of the 8 sheets contains
 - **Clean Data**: Properly formatted headers and data structure for easy analysis in Excel
+- **Handles Missing Data**: Gracefully handles tariffs that may not have all rate types
 
 ## Technical Details
 
@@ -82,11 +113,12 @@ The generated Excel file contains **4 sheets**:
 
 ## Example Use Cases
 
-1. **Tariff Analysis**: Import into Excel for pivot tables and custom analysis
-2. **Load Profile Matching**: Use timeseries data to match with actual load profiles
-3. **Rate Comparisons**: Export multiple tariffs and compare side-by-side
-4. **Billing Calculations**: Use timeseries rates with consumption data
-5. **Documentation**: Include in reports and presentations
+1. **Comprehensive Tariff Analysis**: Import both energy and demand rates into Excel for pivot tables and custom analysis
+2. **Load Profile Matching**: Use energy timeseries data to match with actual load profiles
+3. **Rate Comparisons**: Export multiple tariffs and compare energy and demand charges side-by-side
+4. **Billing Calculations**: Use timeseries energy rates with consumption data and demand rates with peak demand data
+5. **Demand Charge Planning**: Analyze flat and time-of-use demand charges to optimize facility operations
+6. **Documentation**: Include comprehensive rate data in reports and presentations
 
 ## Installation
 

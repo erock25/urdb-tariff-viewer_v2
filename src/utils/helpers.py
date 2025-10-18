@@ -285,10 +285,10 @@ def deep_merge_dicts(dict1: dict, dict2: dict) -> dict:
 
 def generate_energy_rates_excel(tariff_viewer, year: int = 2025) -> bytes:
     """
-    Generate an Excel file with multiple sheets containing energy rate data.
+    Generate an Excel file with multiple sheets containing energy and demand rate data.
     
     Args:
-        tariff_viewer: TariffViewer instance with energy rate data
+        tariff_viewer: TariffViewer instance with energy and demand rate data
         year (int): Year for timeseries generation (default 2025)
         
     Returns:
@@ -300,31 +300,69 @@ def generate_energy_rates_excel(tariff_viewer, year: int = 2025) -> bytes:
     # Create Excel writer
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
         
-        # Sheet 1: Current Rate Table (TOU Labels)
+        # ENERGY RATES SHEETS
+        
+        # Sheet 1: Current Energy Rate Table (TOU Labels)
         try:
             tou_table = tariff_viewer.create_tou_labels_table()
             if not tou_table.empty:
-                tou_table.to_excel(writer, sheet_name='Rate Table', index=False)
+                tou_table.to_excel(writer, sheet_name='Energy Rate Table', index=False)
+            else:
+                # Create a note if no energy rates
+                no_data_df = pd.DataFrame({'Note': ['No energy rate structure found in tariff']})
+                no_data_df.to_excel(writer, sheet_name='Energy Rate Table', index=False)
         except Exception as e:
             # Create an empty sheet with error message
             error_df = pd.DataFrame({'Error': [f'Could not generate rate table: {str(e)}']})
-            error_df.to_excel(writer, sheet_name='Rate Table', index=False)
+            error_df.to_excel(writer, sheet_name='Energy Rate Table', index=False)
         
         # Sheet 2: Weekday Energy Rates Heatmap
         weekday_df = tariff_viewer.weekday_df.copy()
         # Format column names as hour strings
         weekday_df.columns = [f'{h:02d}:00' for h in range(24)]
-        weekday_df.to_excel(writer, sheet_name='Weekday Rates')
+        weekday_df.to_excel(writer, sheet_name='Weekday Energy Rates')
         
         # Sheet 3: Weekend Energy Rates Heatmap
         weekend_df = tariff_viewer.weekend_df.copy()
         # Format column names as hour strings
         weekend_df.columns = [f'{h:02d}:00' for h in range(24)]
-        weekend_df.to_excel(writer, sheet_name='Weekend Rates')
+        weekend_df.to_excel(writer, sheet_name='Weekend Energy Rates')
         
-        # Sheet 4: Full Year Timeseries
+        # Sheet 4: Full Year Energy Timeseries
         timeseries_df = generate_energy_rate_timeseries(tariff_viewer, year)
-        timeseries_df.to_excel(writer, sheet_name='Timeseries', index=False)
+        timeseries_df.to_excel(writer, sheet_name='Energy Timeseries', index=False)
+        
+        # DEMAND RATES SHEETS
+        
+        # Sheet 5: Current Demand Rate Table (Demand Labels)
+        try:
+            demand_table = tariff_viewer.create_demand_labels_table()
+            if not demand_table.empty:
+                demand_table.to_excel(writer, sheet_name='Demand Rate Table', index=False)
+            else:
+                # Create a note if no demand rates
+                no_data_df = pd.DataFrame({'Note': ['No demand rate structure found in tariff']})
+                no_data_df.to_excel(writer, sheet_name='Demand Rate Table', index=False)
+        except Exception as e:
+            # Create an empty sheet with error message
+            error_df = pd.DataFrame({'Error': [f'Could not generate demand rate table: {str(e)}']})
+            error_df.to_excel(writer, sheet_name='Demand Rate Table', index=False)
+        
+        # Sheet 6: Weekday Demand Rates Heatmap
+        demand_weekday_df = tariff_viewer.demand_weekday_df.copy()
+        # Format column names as hour strings
+        demand_weekday_df.columns = [f'{h:02d}:00' for h in range(24)]
+        demand_weekday_df.to_excel(writer, sheet_name='Weekday Demand Rates')
+        
+        # Sheet 7: Weekend Demand Rates Heatmap
+        demand_weekend_df = tariff_viewer.demand_weekend_df.copy()
+        # Format column names as hour strings
+        demand_weekend_df.columns = [f'{h:02d}:00' for h in range(24)]
+        demand_weekend_df.to_excel(writer, sheet_name='Weekend Demand Rates')
+        
+        # Sheet 8: Flat Demand Rates (Seasonal/Monthly)
+        flat_demand_df = tariff_viewer.flat_demand_df.copy()
+        flat_demand_df.to_excel(writer, sheet_name='Flat Demand Rates')
     
     # Get the Excel file content as bytes
     excel_data = output.getvalue()

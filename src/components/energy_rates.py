@@ -345,7 +345,7 @@ def _render_excel_download_section(tariff_viewer: TariffViewer) -> None:
     Args:
         tariff_viewer (TariffViewer): TariffViewer instance
     """
-    st.markdown("#### 📥 Download Energy Rates Data")
+    st.markdown("#### 📥 Download Rate Data (Energy & Demand)")
     
     col1, col2, col3 = st.columns([2, 2, 3])
     
@@ -358,7 +358,7 @@ def _render_excel_download_section(tariff_viewer: TariffViewer) -> None:
             max_value=2050,
             value=current_year,
             step=1,
-            help="Select the year for generating the full timeseries data"
+            help="Select the year for generating the full energy timeseries data"
         )
     
     with col2:
@@ -373,7 +373,7 @@ def _render_excel_download_section(tariff_viewer: TariffViewer) -> None:
             utility_clean = clean_filename(tariff_viewer.utility_name)
             rate_clean = clean_filename(tariff_viewer.rate_name)
             timestamp = datetime.now().strftime("%Y%m%d")
-            filename = f"Energy_Rates_{utility_clean}_{rate_clean}_{timestamp}.xlsx"
+            filename = f"Tariff_Rates_{utility_clean}_{rate_clean}_{timestamp}.xlsx"
             
             # Download button
             st.download_button(
@@ -381,7 +381,7 @@ def _render_excel_download_section(tariff_viewer: TariffViewer) -> None:
                 data=excel_data,
                 file_name=filename,
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                help="Download Excel file with 4 sheets: Rate Table, Weekday Rates, Weekend Rates, and Timeseries"
+                help="Download Excel file with 8 sheets containing energy and demand rate data"
             )
             
         except Exception as e:
@@ -390,10 +390,18 @@ def _render_excel_download_section(tariff_viewer: TariffViewer) -> None:
     with col3:
         st.info(
             """
-            **Excel file contains 4 sheets:**
-            - **Rate Table**: TOU periods with base rates and adjustments
-            - **Weekday Rates**: 12x24 heatmap data (Month x Hour)
-            - **Weekend Rates**: 12x24 heatmap data (Month x Hour)
-            - **Timeseries**: Full year of 15-minute interval data with timestamps and rates
+            **Excel file contains 8 sheets:**
+            
+            **Energy Rates:**
+            - **Energy Rate Table**: TOU periods with base rates and adjustments
+            - **Weekday Energy Rates**: 12x24 heatmap (Month x Hour)
+            - **Weekend Energy Rates**: 12x24 heatmap (Month x Hour)
+            - **Energy Timeseries**: Full year 15-min interval data
+            
+            **Demand Rates:**
+            - **Demand Rate Table**: Demand periods with rates
+            - **Weekday Demand Rates**: 12x24 heatmap (Month x Hour)
+            - **Weekend Demand Rates**: 12x24 heatmap (Month x Hour)
+            - **Flat Demand Rates**: Seasonal/Monthly flat demand charges
             """
         )
