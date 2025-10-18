@@ -6,7 +6,9 @@ This module contains common utility functions used throughout the application.
 
 from typing import Any, Optional, Union
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
+import pandas as pd
+import io
 
 
 def format_currency(amount: Union[int, float], precision: int = 2) -> str:
@@ -279,3 +281,112 @@ def deep_merge_dicts(dict1: dict, dict2: dict) -> dict:
             result[key] = value
     
     return result
+
+
+def generate_energy_rates_excel(tariff_viewer, year: int = 2025) -> bytes:
+    """
+    Generate an Excel file with multiple sheets containing energy rate data.
+    
+    Args:
+        tariff_viewer: TariffViewer instance with energy rate data
+        year (int): Year for timeseries generation (default 2025)
+        
+    Returns:
+        bytes: Excel file content as bytes
+    """
+    # Create a bytes buffer to hold the Excel file
+    output = io.BytesIO()
+    
+    # Create Excel writer
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        
+        # Sheet 1: Current Rate Table (TOU Labels)
+        try:
+            tou_table = tariff_viewer.create_tou_labels_table()
+            if not tou_table.empty:
+                tou_table.to_excel(writer, sheet_name='Rate Table', index=False)
+        except Exception as e:
+            # Create an empty sheet with error message
+            error_df = pd.DataFrame({'Error': [f'Could not generate rate table: {str(e)}']})
+            error_df.to_excel(writer, sheet_name='Rate Table', index=False)
+        
+        # Sheet 2: Weekday Energy Rates Heatmap
+        weekday_df = tariff_viewer.weekday_df.copy()
+        # Format column names as hour strings
+        weekday_df.columns = [f'{h:02d}:00' for h in range(24)]
+        weekday_df.to_excel(writer, sheet_name='Weekday Rates')
+        
+        # Sheet 3: Weekend Energy Rates Heatmap
+        weekend_df = tariff_viewer.weekend_df.copy()
+        # Format column names as hour strings
+        weekend_df.columns = [f'{h:02d}:00' for h in range(24)]
+        weekend_df.to_excel(writer, sheet_name='Weekend Rates')
+        
+        # Sheet 4: Full Year Timeseries
+        timeseries_df = generate_energy_rate_timeseries(tariff_viewer, year)
+        timeseries_df.to_excel(writer, sheet_name='Timeseries', index=False)
+    
+    # Get the Excel file content as bytes
+    excel_data = output.getvalue()
+    return excel_data
+
+
+def generate_energy_rate_timeseries(tariff_viewer, year: int = 2025) -> pd.DataFrame:
+    """
+    Generate a full year of timeseries data with timestamps and corresponding energy rates.
+    
+    Args:
+        tariff_viewer: TariffViewer instance with energy rate data
+        year (int): Year for timeseries generation
+        
+    Returns:
+        pd.DataFrame: DataFrame with 'timestamp' and 'energy_rate_$/kWh' columns
+    """
+    # Generate timestamps for full year at 15-minute intervals
+    start_date = datetime(year, 1, 1, 0, 0, 0)
+    end_date = datetime(year, 12, 31, 23, 45, 0)
+    
+    # Create timestamp range (15-minute intervals)
+    timestamps = []
+    current_time = start_date
+    while current_time <= end_date:
+        timestamps.append(current_time)
+        current_time += timedelta(minutes=15)
+    
+    # Create DataFrame
+    df = pd.DataFrame({'timestamp': timestamps})
+    
+    # Add derived columns for rate lookup
+    df['month'] = df['timestamp'].dt.month - 1  # 0-indexed for array lookup
+    df['hour'] = df['timestamp'].dt.hour
+    df['weekday'] = df['timestamp'].dt.weekday  # 0=Monday, 6=Sunday
+    df['is_weekend'] = df['weekday'] >= 5  # Saturday=5, Sunday=6
+    
+    # Get the appropriate rate for each timestamp
+    energy_rates = []
+    
+    for idx, row in df.iterrows():
+        month_idx = row['month']
+        hour = row['hour']
+        is_weekend = row['is_weekend']
+        
+        # Select appropriate rate DataFrame
+        if is_weekend:
+            rate_df = tariff_viewer.weekend_df
+        else:
+            rate_df = tariff_viewer.weekday_df
+        
+        # Get rate from DataFrame (month is row index, hour is column)
+        try:
+            rate = rate_df.iloc[month_idx, hour]
+            energy_rates.append(rate)
+        except (IndexError, KeyError):
+            energy_rates.append(0.0)
+    
+    # Create final DataFrame with only timestamp and rate
+    result_df = pd.DataFrame({
+        'timestamp': df['timestamp'],
+        'energy_rate_$/kWh': energy_rates
+    })
+    
+    return result_df

@@ -7,10 +7,12 @@ This module contains the UI components for the energy rates analysis tab.
 import streamlit as st
 import pandas as pd
 from typing import Dict, Any, Optional
+from datetime import datetime
 
 from src.models.tariff import TariffViewer
 from src.components.visualizations import create_heatmap, display_rate_statistics
 from src.utils.styling import create_section_header_html, create_custom_divider_html
+from src.utils.helpers import generate_energy_rates_excel, clean_filename
 
 
 def render_energy_rates_tab(tariff_viewer: TariffViewer, options: Dict[str, Any]) -> None:
@@ -116,6 +118,9 @@ def render_energy_rates_tab(tariff_viewer: TariffViewer, options: Dict[str, Any]
         st.info("This may indicate missing or invalid energy rate data in the tariff file.")
     
     st.markdown(create_custom_divider_html(), unsafe_allow_html=True)
+    
+    # Add Excel download section at the bottom
+    _render_excel_download_section(tariff_viewer)
 
 
 def _render_comprehensive_rate_editing_section(tariff_viewer: TariffViewer, options: Dict[str, Any]) -> None:
@@ -331,3 +336,64 @@ def show_energy_rate_comparison(tariff_viewer: TariffViewer, options: Dict[str, 
         )
         
         st.plotly_chart(fig, width="stretch")
+
+
+def _render_excel_download_section(tariff_viewer: TariffViewer) -> None:
+    """
+    Render the Excel download section with button.
+    
+    Args:
+        tariff_viewer (TariffViewer): TariffViewer instance
+    """
+    st.markdown("#### 📥 Download Energy Rates Data")
+    
+    col1, col2, col3 = st.columns([2, 2, 3])
+    
+    with col1:
+        # Year selection for timeseries
+        current_year = datetime.now().year
+        year = st.number_input(
+            "Year for Timeseries",
+            min_value=2020,
+            max_value=2050,
+            value=current_year,
+            step=1,
+            help="Select the year for generating the full timeseries data"
+        )
+    
+    with col2:
+        st.write("")  # Spacing
+        st.write("")  # Spacing
+        
+        # Generate Excel file
+        try:
+            excel_data = generate_energy_rates_excel(tariff_viewer, year=year)
+            
+            # Create filename
+            utility_clean = clean_filename(tariff_viewer.utility_name)
+            rate_clean = clean_filename(tariff_viewer.rate_name)
+            timestamp = datetime.now().strftime("%Y%m%d")
+            filename = f"Energy_Rates_{utility_clean}_{rate_clean}_{timestamp}.xlsx"
+            
+            # Download button
+            st.download_button(
+                label="📥 Download Excel File",
+                data=excel_data,
+                file_name=filename,
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                help="Download Excel file with 4 sheets: Rate Table, Weekday Rates, Weekend Rates, and Timeseries"
+            )
+            
+        except Exception as e:
+            st.error(f"❌ Error generating Excel file: {str(e)}")
+    
+    with col3:
+        st.info(
+            """
+            **Excel file contains 4 sheets:**
+            - **Rate Table**: TOU periods with base rates and adjustments
+            - **Weekday Rates**: 12x24 heatmap data (Month x Hour)
+            - **Weekend Rates**: 12x24 heatmap data (Month x Hour)
+            - **Timeseries**: Full year of 15-minute interval data with timestamps and rates
+            """
+        )
