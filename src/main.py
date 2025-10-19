@@ -24,6 +24,7 @@ from src.components.flat_demand_rates import render_flat_demand_rates_tab
 from src.components.cost_calculator import render_cost_calculator_tab
 from src.components.load_generator import render_load_generator_tab
 from src.components.visualizations import display_rate_statistics
+from src.components.tariff_builder import render_tariff_builder_tab
 
 
 def initialize_app(dark_mode: bool = False) -> None:
@@ -244,13 +245,14 @@ def main() -> None:
     render_tariff_info_chips(tariff_viewer)
     
     # Create main tabs
-    tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+    tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
         "⚡ Energy Rates", 
         "🔌 Demand Rates", 
         "📊 Flat Demand", 
         "💰 Utility Cost Calculator", 
         "🔧 Load Profile Generator", 
-        "📊 LP Analysis"
+        "📊 LP Analysis",
+        "🏗️ Tariff Builder"
     ])
     
     # Render each tab
@@ -271,6 +273,9 @@ def main() -> None:
     
     with tab6:
         render_load_profile_analysis_tab(selected_load_profile, sidebar_options)
+    
+    with tab7:
+        render_tariff_builder_tab()
     
     # Render tariff information section at the bottom
     render_tariff_information_section(tariff_viewer)

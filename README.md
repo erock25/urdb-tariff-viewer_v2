@@ -11,6 +11,7 @@ A comprehensive, modular Streamlit application for viewing and editing utility r
 - **📊 Advanced Analytics**: Detailed load profile analysis and comparison tools
 - **🎨 Modern UI**: Updated styling with improved user experience
 - **⚙️ Better Configuration**: Centralized settings and environment management
+- **🛠️ Tariff Builder**: NEW! Create custom tariff JSON files from scratch through an intuitive GUI
 
 ## Features
 
@@ -43,6 +44,18 @@ A comprehensive, modular Streamlit application for viewing and editing utility r
 - **Load Duration Curves**: Analyze load profile characteristics
 - **Cost Comparison Charts**: Visual comparison of tariff options
 - **Dark Mode Support**: Toggle between light and dark themes
+
+### 🛠️ Tariff Builder (NEW!)
+- **Create Custom Tariffs**: Build new tariff JSON files from scratch through an intuitive GUI
+- **Wizard Interface**: 7-section guided workflow for easy tariff creation
+- **Visual Schedule Editor**: Set time-of-use schedules with simple or advanced modes
+- **Real-time Validation**: Ensure tariff data is complete and properly formatted
+- **Schedule Preview**: Visual heatmap showing your complete TOU schedule
+- **Save & Export**: Save to user_data directory or download directly
+- **URDB Compatible**: Creates properly formatted URDB JSON files
+- **No JSON Editing Required**: Build complex tariffs without manual file editing
+
+📚 **Documentation**: See `TARIFF_BUILDER_GUIDE.md` for detailed instructions and `TARIFF_BUILDER_QUICK_REFERENCE.md` for quick tips
 
 ## Installation
 
@@ -99,6 +112,18 @@ mypy src/
 3. **Modify Rate**: Enter the new rate value
 4. **Apply Changes**: Click "Update Rate" to apply modifications
 5. **Save Changes**: Use "Save Changes" to export modified tariffs
+
+### Creating New Tariffs (Tariff Builder)
+1. **Access the Builder**: Navigate to the "🏗️ Tariff Builder" tab
+2. **Basic Information**: Fill in utility name, rate name, sector, and description
+3. **Energy Rates**: Define your TOU periods and rates ($/kWh)
+4. **Schedule Configuration**: Set when each rate period applies (Simple or Advanced mode)
+5. **Optional Charges**: Add demand charges, flat demand, and fixed charges as needed
+6. **Validate & Save**: Review your configuration and save to user_data directory
+7. **Use Your Tariff**: Refresh the page and select your new tariff from the sidebar
+
+📖 **Detailed Guide**: See `TARIFF_BUILDER_GUIDE.md` for comprehensive instructions  
+⚡ **Quick Start**: See `TARIFF_BUILDER_QUICK_REFERENCE.md` for a 5-minute tutorial
 
 ### Understanding the Visualizations
 - **Energy Rates**: Displayed in $/kWh with blue color gradients
