@@ -626,11 +626,16 @@ def _show_schedule_heatmap(schedule: List[List[int]], schedule_type: str, labels
     # Create DataFrame for the heatmap
     schedule_df = pd.DataFrame(schedule, index=MONTHS, columns=HOURS)
     
-    # Display as styled dataframe
-    st.dataframe(
-        schedule_df.style.background_gradient(cmap='RdYlGn_r', axis=None),
-        use_container_width=True
-    )
+    # Display as styled dataframe with fallback if matplotlib not available
+    try:
+        st.dataframe(
+            schedule_df.style.background_gradient(cmap='RdYlGn_r', axis=None),
+            use_container_width=True
+        )
+    except ImportError:
+        # Fallback to plain dataframe if matplotlib not available
+        st.dataframe(schedule_df, use_container_width=True)
+        st.caption("⚠️ Install matplotlib for color-coded heatmap visualization")
     
     # Show legend
     st.markdown("**Period Legend:**")
