@@ -62,7 +62,7 @@ def render_demand_rates_tab(tariff_viewer: TariffViewer, options: Dict[str, Any]
                 total_rate = rate + adj
                 
                 # Determine which months this demand period appears in
-                months_present = tariff_viewer._get_months_for_tou_period(i, demand_weekday_schedule, demand_weekend_schedule)
+                months_present = tariff_viewer._get_months_for_demand_period(i, demand_weekday_schedule, demand_weekend_schedule)
                 
                 demand_table_data.append({
                     'Demand Period': label,
