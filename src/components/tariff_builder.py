@@ -715,6 +715,7 @@ def _render_advanced_schedule_editor(data: Dict, num_periods: int) -> None:
     # Three-step process
     st.markdown("---")
     st.markdown("### Step 1: Manage Templates")
+    st.info("💡 **Tip**: Create a template for each unique schedule that will occur in the tariff over a given year. For example, if your tariff has different rates for Summer, Winter, and Shoulder seasons, create three templates. **Remember to do this separately for Weekdays and Weekends** using the toggle button above.")
     _render_template_manager(schedule_type_lower, 'energy', num_periods, data)
     
     st.markdown("---")
@@ -822,6 +823,7 @@ def _render_advanced_demand_schedule_editor(data: Dict, num_periods: int) -> Non
     # Three-step process
     st.markdown("---")
     st.markdown("### Step 1: Manage Templates")
+    st.info("💡 **Tip**: Create a template for each unique schedule that will occur in the tariff over a given year. For example, if your tariff has different rates for Summer, Winter, and Shoulder seasons, create three templates. **Remember to do this separately for Weekdays and Weekends** using the toggle button above.")
     _render_template_manager(schedule_type_lower, 'demand', num_periods, data)
     
     st.markdown("---")
