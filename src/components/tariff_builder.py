@@ -248,7 +248,7 @@ def _render_energy_rates_section() -> None:
     st.markdown("### ⚡ Energy Rate Structure")
     st.markdown("""
     Define your Time-of-Use (TOU) energy rate periods. Each period represents a different 
-    energy rate (e.g., Peak, Off-Peak, Super Off-Peak).
+    energy rate (e.g., Summer/Winter On-Peak, Off-Peak, Super Off-Peak).
     """)
     
     data = st.session_state.tariff_builder_data['items'][0]
@@ -460,46 +460,274 @@ def _render_simple_schedule_editor(data: Dict, num_periods: int) -> None:
             st.success("✓ Schedule updated for all months!")
 
 
-def _render_advanced_schedule_editor(data: Dict, num_periods: int) -> None:
-    """Render an advanced schedule editor with month-by-month customization."""
-    st.markdown("Configure different schedules for each month of the year.")
+def _initialize_default_templates(data: Dict, schedule_key: str, num_periods: int) -> Dict:
+    """Initialize default templates from existing schedule data."""
+    templates = {
+        'Template 1': {
+            'name': 'Template 1',
+            'schedule': data[schedule_key][0].copy() if data[schedule_key] else [0] * 24,
+            'assigned_months': [0]  # January by default
+        }
+    }
+    return templates
+
+
+def _get_template_key(schedule_type: str, rate_type: str) -> str:
+    """Get the session state key for templates."""
+    return f"{rate_type}_schedule_templates"
+
+
+def _get_schedule_key(schedule_type: str, rate_type: str) -> str:
+    """Get the data key for the schedule (weekday or weekend)."""
+    prefix = 'energy' if rate_type == 'energy' else 'demand'
+    return f"{prefix}{schedule_type}schedule"
+
+
+def _render_template_manager(schedule_type: str, rate_type: str, num_periods: int, data: Dict) -> None:
+    """Render the template management UI (add, delete, rename templates)."""
+    template_key = _get_template_key(schedule_type, rate_type)
+    templates = st.session_state[template_key][schedule_type]
     
-    schedule_type = st.radio("Schedule to edit:", ["Weekday", "Weekend"], horizontal=True)
+    col1, col2 = st.columns([2, 1])
     
-    selected_month = st.selectbox(
-        "Select Month",
-        options=list(range(12)),
-        format_func=lambda x: MONTHS[x]
+    with col1:
+        st.markdown(f"**Current {schedule_type.title()} Templates:**")
+        if templates:
+            for template_id, template in templates.items():
+                num_months = len(template.get('assigned_months', []))
+                st.write(f"• **{template['name']}** ({num_months} months assigned)")
+        else:
+            st.info("No templates yet. Add one below!")
+    
+    with col2:
+        st.markdown("**Add New Template:**")
+        new_template_name = st.text_input(
+            "Template Name",
+            placeholder="e.g., Summer Peak",
+            key=f"new_template_name_{rate_type}_{schedule_type}"
+        )
+        
+        if st.button("➕ Add Template", key=f"add_template_{rate_type}_{schedule_type}"):
+            if new_template_name and new_template_name not in templates:
+                templates[new_template_name] = {
+                    'name': new_template_name,
+                    'schedule': [0] * 24,  # Default all zeros
+                    'assigned_months': []
+                }
+                st.success(f"✓ Added template '{new_template_name}'")
+                st.rerun()
+            elif new_template_name in templates:
+                st.error("Template name already exists!")
+            else:
+                st.warning("Please enter a template name.")
+    
+    # Delete template option
+    if templates:
+        st.markdown("**Delete Template:**")
+        template_to_delete = st.selectbox(
+            "Select template to delete",
+            options=list(templates.keys()),
+            key=f"delete_template_select_{rate_type}_{schedule_type}"
+        )
+        
+        if st.button("🗑️ Delete", key=f"delete_template_{rate_type}_{schedule_type}"):
+            if len(templates) > 1:
+                del templates[template_to_delete]
+                st.success(f"✓ Deleted template '{template_to_delete}'")
+                st.rerun()
+            else:
+                st.error("Cannot delete the last template! Add another one first.")
+
+
+def _render_template_editor(schedule_type: str, rate_type: str, num_periods: int, data: Dict) -> None:
+    """Render the template editor UI for defining the 24-hour schedule."""
+    template_key = _get_template_key(schedule_type, rate_type)
+    templates = st.session_state[template_key][schedule_type]
+    
+    if not templates:
+        st.warning("No templates available. Add a template in Step 1.")
+        return
+    
+    selected_template = st.selectbox(
+        "Select template to edit:",
+        options=list(templates.keys()),
+        key=f"edit_template_select_{rate_type}_{schedule_type}"
     )
     
-    schedule_key = 'energyweekdayschedule' if schedule_type == "Weekday" else 'energyweekendschedule'
+    template = templates[selected_template]
     
-    st.markdown(f"#### {MONTHS[selected_month]} - {schedule_type} Schedule")
-    
-    # Create a grid for hour selection
+    st.markdown(f"#### Editing: **{template['name']}**")
     st.markdown("**Set the TOU period for each hour:**")
     
-    cols = st.columns(6)
-    month_schedule = data[schedule_key][selected_month]
+    # Create a form to batch updates
+    with st.form(f"template_editor_{rate_type}_{schedule_type}_{selected_template}"):
+        cols = st.columns(6)
+        new_schedule = []
+        
+        for hour in range(24):
+            with cols[hour % 6]:
+                if rate_type == 'energy':
+                    format_func = lambda x: f"{data['energytoulabels'][x]}" if x < len(data.get('energytoulabels', [])) else f"P{x}"
+                else:
+                    format_func = lambda x: f"P{x}"
+                
+                period = st.selectbox(
+                    f"{hour}:00",
+                    options=list(range(num_periods)),
+                    format_func=format_func,
+                    index=template['schedule'][hour] if hour < len(template['schedule']) else 0,
+                    key=f"template_hour_{rate_type}_{schedule_type}_{selected_template}_{hour}",
+                    label_visibility="visible"
+                )
+                new_schedule.append(period)
+        
+        submitted = st.form_submit_button("✅ Save Template", type="primary", use_container_width=True)
+        
+        if submitted:
+            template['schedule'] = new_schedule
+            st.success(f"✓ Saved template '{template['name']}'")
     
-    for hour in range(24):
-        with cols[hour % 6]:
-            period = st.selectbox(
-                f"{hour}:00",
-                options=list(range(num_periods)),
-                format_func=lambda x: f"P{x}",
-                key=f"adv_{schedule_type}_{selected_month}_{hour}",
-                index=month_schedule[hour] if hour < len(month_schedule) else 0,
-                label_visibility="visible"
-            )
-            month_schedule[hour] = period
+    # Show template preview
+    st.markdown("**Template Preview:**")
+    preview_df = pd.DataFrame({
+        'Hour': [f"{h}:00" for h in range(24)],
+        'Period': [template['schedule'][h] for h in range(24)]
+    })
+    st.dataframe(preview_df, use_container_width=True, height=300)
+
+
+def _render_month_assignment(schedule_type: str, rate_type: str, data: Dict) -> None:
+    """Render the month assignment UI for assigning templates to months."""
+    template_key = _get_template_key(schedule_type, rate_type)
+    templates = st.session_state[template_key][schedule_type]
     
-    # Copy to other months option
+    if not templates:
+        st.warning("No templates available. Add a template in Step 1.")
+        return
+    
+    st.markdown("**Assign each month to a template:**")
+    st.info("💡 **Tip**: Typically there are 2-3 unique schedules per year (e.g., Summer, Winter, Shoulder).")
+    
+    # Initialize month assignments if not present
+    for template in templates.values():
+        if 'assigned_months' not in template:
+            template['assigned_months'] = []
+    
+    # Create a form for batch updates
+    with st.form(f"month_assignment_{rate_type}_{schedule_type}"):
+        cols = st.columns(4)
+        month_assignments = {}
+        
+        # Get current assignments
+        current_assignments = {}
+        for template_name, template in templates.items():
+            for month in template.get('assigned_months', []):
+                current_assignments[month] = template_name
+        
+        for month_idx in range(12):
+            with cols[month_idx % 4]:
+                current_template = current_assignments.get(month_idx, list(templates.keys())[0])
+                
+                selected = st.selectbox(
+                    MONTHS[month_idx],
+                    options=list(templates.keys()),
+                    index=list(templates.keys()).index(current_template) if current_template in templates else 0,
+                    key=f"month_assign_{rate_type}_{schedule_type}_{month_idx}"
+                )
+                month_assignments[month_idx] = selected
+        
+        submitted = st.form_submit_button("✅ Apply Month Assignments", type="primary", use_container_width=True)
+        
+        if submitted:
+            # Clear all existing assignments
+            for template in templates.values():
+                template['assigned_months'] = []
+            
+            # Apply new assignments
+            for month_idx, template_name in month_assignments.items():
+                if template_name in templates:
+                    templates[template_name]['assigned_months'].append(month_idx)
+            
+            st.success("✓ Month assignments updated!")
+    
+    # Show assignment summary
     st.markdown("---")
-    if st.button(f"📋 Copy this schedule to all {schedule_type.lower()} months"):
-        for i in range(12):
-            data[schedule_key][i] = month_schedule.copy()
-        st.success(f"✓ Copied {MONTHS[selected_month]} schedule to all months!")
+    st.markdown("**Assignment Summary:**")
+    for template_name, template in templates.items():
+        assigned_months = template.get('assigned_months', [])
+        if assigned_months:
+            month_names = [MONTHS[m] for m in sorted(assigned_months)]
+            st.write(f"**{template_name}**: {', '.join(month_names)}")
+        else:
+            st.write(f"**{template_name}**: No months assigned")
+
+
+def _apply_templates_to_schedule(data: Dict, rate_type: str) -> None:
+    """Apply templates to generate the final schedule arrays."""
+    template_key_weekday = _get_template_key('weekday', rate_type)
+    template_key_weekend = _get_template_key('weekend', rate_type)
+    
+    # Apply weekday templates
+    weekday_templates = st.session_state[template_key_weekday]['weekday']
+    schedule_key_weekday = _get_schedule_key('weekday', rate_type)
+    
+    for month_idx in range(12):
+        # Find which template is assigned to this month
+        assigned_template = None
+        for template in weekday_templates.values():
+            if month_idx in template.get('assigned_months', []):
+                assigned_template = template
+                break
+        
+        if assigned_template:
+            data[schedule_key_weekday][month_idx] = assigned_template['schedule'].copy()
+    
+    # Apply weekend templates
+    weekend_templates = st.session_state[template_key_weekend]['weekend']
+    schedule_key_weekend = _get_schedule_key('weekend', rate_type)
+    
+    for month_idx in range(12):
+        # Find which template is assigned to this month
+        assigned_template = None
+        for template in weekend_templates.values():
+            if month_idx in template.get('assigned_months', []):
+                assigned_template = template
+                break
+        
+        if assigned_template:
+            data[schedule_key_weekend][month_idx] = assigned_template['schedule'].copy()
+
+
+def _render_advanced_schedule_editor(data: Dict, num_periods: int) -> None:
+    """Render an advanced schedule editor with template-based customization."""
+    st.markdown("Configure schedules using templates. Define 2-3 unique schedules and assign them to months.")
+    
+    # Initialize templates in session state if not present
+    if 'energy_schedule_templates' not in st.session_state:
+        st.session_state.energy_schedule_templates = {
+            'weekday': _initialize_default_templates(data, 'energyweekdayschedule', num_periods),
+            'weekend': _initialize_default_templates(data, 'energyweekendschedule', num_periods)
+        }
+    
+    schedule_type = st.radio("Schedule to edit:", ["Weekday", "Weekend"], horizontal=True, key="energy_schedule_type")
+    schedule_type_lower = schedule_type.lower()
+    
+    # Three-step process
+    st.markdown("---")
+    st.markdown("### Step 1: Manage Templates")
+    st.info("💡 **Tip**: Create a template for each unique schedule that will occur in the tariff over a given year. For example, if your tariff has different rates for Summer, Winter, and Shoulder seasons, create three templates. **Remember to do this separately for Weekdays and Weekends** using the toggle button above.")
+    _render_template_manager(schedule_type_lower, 'energy', num_periods, data)
+    
+    st.markdown("---")
+    st.markdown("### Step 2: Edit Templates")
+    _render_template_editor(schedule_type_lower, 'energy', num_periods, data)
+    
+    st.markdown("---")
+    st.markdown("### Step 3: Assign Templates to Months")
+    _render_month_assignment(schedule_type_lower, 'energy', data)
+    
+    # Apply templates to generate final schedules
+    _apply_templates_to_schedule(data, 'energy')
 
 
 def _render_simple_demand_schedule_editor(data: Dict, num_periods: int) -> None:
@@ -579,46 +807,35 @@ def _render_simple_demand_schedule_editor(data: Dict, num_periods: int) -> None:
 
 
 def _render_advanced_demand_schedule_editor(data: Dict, num_periods: int) -> None:
-    """Render an advanced demand schedule editor with month-by-month customization."""
-    st.markdown("Configure different demand schedules for each month of the year.")
+    """Render an advanced demand schedule editor with template-based customization."""
+    st.markdown("Configure demand schedules using templates. Define 2-3 unique schedules and assign them to months.")
     
-    schedule_type = st.radio("Schedule to edit:", ["Weekday", "Weekend"], horizontal=True, key="demand_adv_schedule_type")
+    # Initialize templates in session state if not present
+    if 'demand_schedule_templates' not in st.session_state:
+        st.session_state.demand_schedule_templates = {
+            'weekday': _initialize_default_templates(data, 'demandweekdayschedule', num_periods),
+            'weekend': _initialize_default_templates(data, 'demandweekendschedule', num_periods)
+        }
     
-    selected_month = st.selectbox(
-        "Select Month",
-        options=list(range(12)),
-        format_func=lambda x: MONTHS[x],
-        key="demand_adv_month_select"
-    )
+    schedule_type = st.radio("Schedule to edit:", ["Weekday", "Weekend"], horizontal=True, key="demand_schedule_type")
+    schedule_type_lower = schedule_type.lower()
     
-    schedule_key = 'demandweekdayschedule' if schedule_type == "Weekday" else 'demandweekendschedule'
-    
-    st.markdown(f"#### {MONTHS[selected_month]} - {schedule_type} Demand Schedule")
-    
-    # Create a grid for hour selection
-    st.markdown("**Set the demand period for each hour:**")
-    
-    cols = st.columns(6)
-    month_schedule = data[schedule_key][selected_month]
-    
-    for hour in range(24):
-        with cols[hour % 6]:
-            period = st.selectbox(
-                f"{hour}:00",
-                options=list(range(num_periods)),
-                format_func=lambda x: f"P{x}",
-                key=f"adv_demand_{schedule_type}_{selected_month}_{hour}",
-                index=month_schedule[hour] if hour < len(month_schedule) else 0,
-                label_visibility="visible"
-            )
-            month_schedule[hour] = period
-    
-    # Copy to other months option
+    # Three-step process
     st.markdown("---")
-    if st.button(f"📋 Copy this demand schedule to all {schedule_type.lower()} months"):
-        for i in range(12):
-            data[schedule_key][i] = month_schedule.copy()
-        st.success(f"✓ Copied {MONTHS[selected_month]} demand schedule to all months!")
+    st.markdown("### Step 1: Manage Templates")
+    st.info("💡 **Tip**: Create a template for each unique schedule that will occur in the tariff over a given year. For example, if your tariff has different rates for Summer, Winter, and Shoulder seasons, create three templates. **Remember to do this separately for Weekdays and Weekends** using the toggle button above.")
+    _render_template_manager(schedule_type_lower, 'demand', num_periods, data)
+    
+    st.markdown("---")
+    st.markdown("### Step 2: Edit Templates")
+    _render_template_editor(schedule_type_lower, 'demand', num_periods, data)
+    
+    st.markdown("---")
+    st.markdown("### Step 3: Assign Templates to Months")
+    _render_month_assignment(schedule_type_lower, 'demand', data)
+    
+    # Apply templates to generate final schedules
+    _apply_templates_to_schedule(data, 'demand')
 
 
 def _show_schedule_heatmap(schedule: List[List[int]], schedule_type: str, labels: List[str]) -> None:
