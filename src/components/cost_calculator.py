@@ -33,6 +33,13 @@ def render_cost_calculator_tab(
     """
     st.markdown(create_section_header_html("💰 Utility Cost Calculator"), unsafe_allow_html=True)
     
+    # Load Factor Analysis Tool - Always available
+    st.markdown("#### 📊 Load Factor Rate Analysis")
+    _render_load_factor_analysis_tool(tariff_viewer, options)
+    
+    st.markdown(create_custom_divider_html(), unsafe_allow_html=True)
+    
+    # Rest of the calculator (requires load profile)
     if not load_profile_path:
         _show_no_load_profile_message()
         return
@@ -649,3 +656,473 @@ def _display_comparison_results(comparison_results: Dict[str, Any], options: Dic
         )
         
         st.plotly_chart(fig, width="stretch")
+
+
+def _render_load_factor_analysis_tool(tariff_viewer: TariffViewer, options: Dict[str, Any]) -> None:
+    """
+    Render the load factor analysis tool.
+    
+    This tool allows users to calculate effective utility rates ($/kWh) at different load factors
+    by specifying demand assumptions and energy distribution percentages.
+    
+    Args:
+        tariff_viewer (TariffViewer): TariffViewer instance
+        options (Dict[str, Any]): Display options
+    """
+    
+    with st.expander("🔍 Load Factor Rate Analysis Tool", expanded=False):
+        st.markdown("""
+        This tool calculates the **effective utility rate in $/kWh** for different load factors.
+        
+        **How it works:**
+        - Specify the maximum demand for each applicable demand period
+        - Specify the energy distribution across all energy rate periods
+        - Select the month of interest
+        - View effective rates for load factors: 1%, 5%, 10%, 20%, 30%, 50%, and 100%
+        """)
+        
+        tariff_data = tariff_viewer.tariff  # Use .tariff for actual tariff data
+        
+        # Month selection
+        month_names = ['January', 'February', 'March', 'April', 'May', 'June',
+                      'July', 'August', 'September', 'October', 'November', 'December']
+        selected_month = st.selectbox(
+            "📅 Select Month of Interest",
+            options=list(range(12)),
+            format_func=lambda x: month_names[x],
+            help="Select the month for which to calculate effective rates"
+        )
+        
+        st.markdown("---")
+        
+        # Get demand rate structure
+        has_tou_demand = 'demandratestructure' in tariff_data and tariff_data.get('demandratestructure')
+        has_flat_demand = 'flatdemandstructure' in tariff_data and tariff_data.get('flatdemandstructure')
+        
+        demand_inputs = {}
+        
+        # TOU Demand inputs
+        if has_tou_demand:
+            st.markdown("##### ⚡ TOU Demand Charges")
+            st.markdown("Specify the maximum demand (kW) for each TOU demand period:")
+            
+            # Get demand period labels if available
+            demand_labels = tariff_data.get('demandtoulabels', [])
+            num_demand_periods = len(tariff_data['demandratestructure'])
+            
+            cols = st.columns(min(num_demand_periods, 3))
+            for i in range(num_demand_periods):
+                label = demand_labels[i] if i < len(demand_labels) else f"Demand Period {i}"
+                rate = tariff_data['demandratestructure'][i][0].get('rate', 0)
+                adj = tariff_data['demandratestructure'][i][0].get('adj', 0)
+                total_rate = rate + adj
+                
+                with cols[i % 3]:
+                    demand_inputs[f'tou_demand_{i}'] = st.number_input(
+                        f"{label}\n(${total_rate:.2f}/kW)",
+                        min_value=0.0,
+                        value=0.0,
+                        step=1.0,
+                        key=f"lf_tou_demand_{i}",
+                        help=f"Base rate: ${rate:.2f}/kW" + (f" + Adjustment: ${adj:.2f}/kW" if adj != 0 else "")
+                    )
+        
+        # Flat demand input
+        if has_flat_demand:
+            st.markdown("##### 📊 Flat Monthly Demand Charge")
+            
+            # Get the correct flat demand structure based on selected month
+            flatdemandmonths = tariff_data.get('flatdemandmonths', [0]*12)
+            flat_tier = flatdemandmonths[selected_month] if selected_month < len(flatdemandmonths) else 0
+            
+            # Get rate structure for this tier
+            flat_structure = tariff_data['flatdemandstructure']
+            if flat_tier < len(flat_structure):
+                flat_rate = flat_structure[flat_tier][0].get('rate', 0)
+                flat_adj = flat_structure[flat_tier][0].get('adj', 0)
+            else:
+                flat_rate = flat_structure[0][0].get('rate', 0)
+                flat_adj = flat_structure[0][0].get('adj', 0)
+            
+            total_flat_rate = flat_rate + flat_adj
+            
+            # Build help text
+            help_text = f"Base rate: ${flat_rate:.2f}/kW" + (f" + Adjustment: ${flat_adj:.2f}/kW" if flat_adj != 0 else "")
+            if len(flat_structure) > 1:
+                help_text += f"\n\n(Rate for {month_names[selected_month]} - tier {flat_tier})"
+            if has_tou_demand:
+                help_text += "\n\nNote: If entered value is less than highest TOU demand, it will be auto-adjusted upward"
+            
+            flat_demand_value = st.number_input(
+                f"Maximum Monthly Demand (${total_flat_rate:.2f}/kW)",
+                min_value=0.0,
+                value=0.0,
+                step=1.0,
+                key="lf_flat_demand",
+                help=help_text
+            )
+            
+            # Auto-adjust flat demand to be at least max TOU demand
+            if has_tou_demand:
+                tou_demands = [v for k, v in demand_inputs.items() if k.startswith('tou_demand_') and v > 0]
+                if tou_demands:
+                    max_tou_demand = max(tou_demands)
+                    # Use the greater of entered flat demand or max TOU demand
+                    if flat_demand_value == 0:
+                        # User didn't enter anything, auto-set to max TOU demand
+                        st.info(f"ℹ️ Note: Flat demand automatically set to {max_tou_demand:.1f} kW to match the highest TOU demand.")
+                        demand_inputs['flat_demand'] = max_tou_demand
+                    elif flat_demand_value < max_tou_demand:
+                        # User entered a value but it's too low
+                        st.info(f"ℹ️ Note: Flat demand ({flat_demand_value:.1f} kW) is less than highest TOU demand ({max_tou_demand:.1f} kW). Using {max_tou_demand:.1f} kW for calculations.")
+                        demand_inputs['flat_demand'] = max_tou_demand
+                    else:
+                        # User entered a valid value
+                        demand_inputs['flat_demand'] = flat_demand_value
+                else:
+                    demand_inputs['flat_demand'] = flat_demand_value
+            else:
+                demand_inputs['flat_demand'] = flat_demand_value
+        
+        st.markdown("---")
+        
+        # Energy rate structure inputs
+        st.markdown("##### 💡 Energy Distribution")
+        st.markdown("Specify the percentage of energy consumption in each rate period (must sum to 100%):")
+        
+        energy_structure = tariff_data.get('energyratestructure', [])
+        energy_labels = tariff_data.get('energytoulabels', [])
+        num_energy_periods = len(energy_structure)
+        
+        energy_percentages = {}
+        total_percentage = 0.0
+        
+        # Create columns for energy inputs
+        cols = st.columns(min(num_energy_periods, 3))
+        for i in range(num_energy_periods):
+            label = energy_labels[i] if i < len(energy_labels) else f"Energy Period {i}"
+            rate = energy_structure[i][0].get('rate', 0)
+            adj = energy_structure[i][0].get('adj', 0)
+            total_rate = rate + adj
+            
+            with cols[i % 3]:
+                energy_percentages[i] = st.number_input(
+                    f"{label}\n(${total_rate:.4f}/kWh)",
+                    min_value=0.0,
+                    max_value=100.0,
+                    value=0.0 if i > 0 else 100.0,  # Default first period to 100%
+                    step=1.0,
+                    key=f"lf_energy_pct_{i}",
+                    help=f"Base rate: ${rate:.4f}/kWh" + (f" + Adjustment: ${adj:.4f}/kWh" if adj != 0 else "")
+                )
+                total_percentage += energy_percentages[i]
+        
+        # Show percentage total
+        percentage_color = "green" if abs(total_percentage - 100.0) < 0.01 else "red"
+        st.markdown(f"**Total: <span style='color:{percentage_color}'>{total_percentage:.1f}%</span>**", unsafe_allow_html=True)
+        
+        if abs(total_percentage - 100.0) >= 0.01:
+            st.warning("⚠️ Energy percentages must sum to 100%")
+        
+        st.markdown("---")
+        
+        # Calculate button
+        if st.button("🧮 Calculate Effective Rates", type="primary", key="calc_load_factor"):
+            # Validation checks
+            validation_passed = True
+            
+            # Check energy percentages sum to 100%
+            if abs(total_percentage - 100.0) >= 0.01:
+                st.error("❌ Energy percentages must sum to 100% before calculating")
+                validation_passed = False
+            
+            # Proceed with calculation if validation passed
+            if validation_passed:
+                results = _calculate_load_factor_rates(
+                    tariff_data=tariff_data,
+                    demand_inputs=demand_inputs,
+                    energy_percentages=energy_percentages,
+                    selected_month=selected_month,
+                    has_tou_demand=has_tou_demand,
+                    has_flat_demand=has_flat_demand
+                )
+                _display_load_factor_results(results, options)
+
+
+def _calculate_load_factor_rates(
+    tariff_data: Dict[str, Any],
+    demand_inputs: Dict[str, float],
+    energy_percentages: Dict[int, float],
+    selected_month: int,
+    has_tou_demand: bool,
+    has_flat_demand: bool
+) -> pd.DataFrame:
+    """
+    Calculate effective utility rates for different load factors.
+    
+    Args:
+        tariff_data: Tariff data dictionary
+        demand_inputs: Dictionary of demand values for each period
+        energy_percentages: Dictionary of energy percentages for each period
+        selected_month: Month index (0-11)
+        has_tou_demand: Whether tariff has TOU demand charges
+        has_flat_demand: Whether tariff has flat demand charges
+    
+    Returns:
+        DataFrame with load factor analysis results
+    """
+    
+    # Load factors to analyze
+    load_factors = [0.01, 0.05, 0.10, 0.20, 0.30, 0.50, 1.00]
+    
+    # Hours in the selected month (approximate)
+    hours_in_month = [744, 672, 744, 720, 744, 720, 744, 744, 720, 744, 720, 744]
+    hours = hours_in_month[selected_month]
+    
+    # Get fixed charge
+    fixed_charge = tariff_data.get('fixedchargefirstmeter', 0)
+    
+    # Get energy rate structure
+    energy_structure = tariff_data.get('energyratestructure', [])
+    
+    results = []
+    
+    for lf in load_factors:
+        # Calculate peak demand (use the maximum of all specified demands)
+        all_demands = [v for k, v in demand_inputs.items() if v > 0]
+        peak_demand = max(all_demands) if all_demands else 0
+        
+        if peak_demand == 0:
+            # If no demand specified, can't calculate
+            avg_load = 0
+            total_energy = 0
+        else:
+            # Calculate average load from load factor
+            # Load Factor = Average Load / Peak Load
+            avg_load = peak_demand * lf
+            
+            # Calculate total energy
+            total_energy = avg_load * hours
+        
+        # Calculate demand charges
+        total_demand_cost = 0
+        
+        # TOU demand charges
+        if has_tou_demand:
+            demand_structure = tariff_data.get('demandratestructure', [])
+            for i, structure in enumerate(demand_structure):
+                demand_key = f'tou_demand_{i}'
+                if demand_key in demand_inputs and demand_inputs[demand_key] > 0:
+                    rate = structure[0].get('rate', 0)
+                    adj = structure[0].get('adj', 0)
+                    # Demand charge is based on the specified demand for this period
+                    total_demand_cost += demand_inputs[demand_key] * (rate + adj)
+        
+        # Flat demand charge
+        if has_flat_demand:
+            if 'flat_demand' in demand_inputs and demand_inputs['flat_demand'] > 0:
+                # Get the correct flat demand structure based on selected month
+                flatdemandmonths = tariff_data.get('flatdemandmonths', [0]*12)
+                flat_tier = flatdemandmonths[selected_month] if selected_month < len(flatdemandmonths) else 0
+                
+                flat_structure_list = tariff_data['flatdemandstructure']
+                if flat_tier < len(flat_structure_list):
+                    flat_structure = flat_structure_list[flat_tier][0]
+                else:
+                    flat_structure = flat_structure_list[0][0]
+                
+                rate = flat_structure.get('rate', 0)
+                adj = flat_structure.get('adj', 0)
+                total_demand_cost += demand_inputs['flat_demand'] * (rate + adj)
+        
+        # Calculate energy charges
+        total_energy_cost = 0
+        if total_energy > 0:
+            for period_idx, percentage in energy_percentages.items():
+                if percentage > 0 and period_idx < len(energy_structure):
+                    # Energy in this period
+                    period_energy = total_energy * (percentage / 100.0)
+                    
+                    # Get rate for this period (tier 0 for simplicity)
+                    rate = energy_structure[period_idx][0].get('rate', 0)
+                    adj = energy_structure[period_idx][0].get('adj', 0)
+                    
+                    total_energy_cost += period_energy * (rate + adj)
+        
+        # Total cost
+        total_cost = total_demand_cost + total_energy_cost + fixed_charge
+        
+        # Effective rate ($/kWh)
+        effective_rate = total_cost / total_energy if total_energy > 0 else 0
+        
+        results.append({
+            'Load Factor': f"{lf * 100:.0f}%",
+            'Load Factor Value': lf,
+            'Peak Demand (kW)': peak_demand,
+            'Average Load (kW)': avg_load,
+            'Total Energy (kWh)': total_energy,
+            'Demand Charges ($)': total_demand_cost,
+            'Energy Charges ($)': total_energy_cost,
+            'Fixed Charges ($)': fixed_charge,
+            'Total Cost ($)': total_cost,
+            'Effective Rate ($/kWh)': effective_rate
+        })
+    
+    return pd.DataFrame(results)
+
+
+def _display_load_factor_results(results: pd.DataFrame, options: Dict[str, Any]) -> None:
+    """
+    Display load factor analysis results.
+    
+    Args:
+        results: DataFrame with analysis results
+        options: Display options
+    """
+    
+    st.markdown("### 📊 Load Factor Analysis Results")
+    
+    if results['Peak Demand (kW)'].iloc[0] == 0:
+        st.warning("⚠️ No demand values specified. Please enter at least one demand value to calculate effective rates.")
+        return
+    
+    # Display summary metrics
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        peak_demand = results['Peak Demand (kW)'].iloc[0]
+        st.metric("Peak Demand", f"{peak_demand:.1f} kW")
+    
+    with col2:
+        min_rate = results['Effective Rate ($/kWh)'].min()
+        st.metric("Lowest Effective Rate", f"${min_rate:.4f}/kWh", 
+                 delta=f"at {results.loc[results['Effective Rate ($/kWh)'].idxmin(), 'Load Factor']}")
+    
+    with col3:
+        max_rate = results['Effective Rate ($/kWh)'].max()
+        st.metric("Highest Effective Rate", f"${max_rate:.4f}/kWh",
+                 delta=f"at {results.loc[results['Effective Rate ($/kWh)'].idxmax(), 'Load Factor']}")
+    
+    st.markdown("---")
+    
+    # Display results table
+    st.markdown("#### 📋 Detailed Results Table")
+    
+    display_df = results[[
+        'Load Factor', 'Average Load (kW)', 'Total Energy (kWh)', 
+        'Demand Charges ($)', 'Energy Charges ($)', 'Fixed Charges ($)', 
+        'Total Cost ($)', 'Effective Rate ($/kWh)'
+    ]].copy()
+    
+    st.dataframe(
+        display_df,
+        use_container_width=True,
+        hide_index=True,
+        column_config={
+            "Load Factor": st.column_config.TextColumn("Load Factor", width="small"),
+            "Average Load (kW)": st.column_config.NumberColumn("Avg Load (kW)", format="%.2f"),
+            "Total Energy (kWh)": st.column_config.NumberColumn("Total Energy (kWh)", format="%.0f"),
+            "Demand Charges ($)": st.column_config.NumberColumn("Demand ($)", format="$%.2f"),
+            "Energy Charges ($)": st.column_config.NumberColumn("Energy ($)", format="$%.2f"),
+            "Fixed Charges ($)": st.column_config.NumberColumn("Fixed ($)", format="$%.2f"),
+            "Total Cost ($)": st.column_config.NumberColumn("Total ($)", format="$%.2f"),
+            "Effective Rate ($/kWh)": st.column_config.NumberColumn("Effective Rate", format="$%.4f")
+        }
+    )
+    
+    # Visualization
+    st.markdown("#### 📈 Effective Rate vs Load Factor")
+    
+    dark_mode = options.get('dark_mode', False)
+    
+    # Create dual-axis chart
+    fig = go.Figure()
+    
+    # Effective rate line
+    fig.add_trace(go.Scatter(
+        x=results['Load Factor Value'] * 100,
+        y=results['Effective Rate ($/kWh)'],
+        mode='lines+markers',
+        name='Effective Rate ($/kWh)',
+        line=dict(color='rgba(59, 130, 246, 0.8)', width=3),
+        marker=dict(size=10),
+        yaxis='y1',
+        hovertemplate="<b>Load Factor: %{x:.0f}%</b><br>Effective Rate: $%{y:.4f}/kWh<extra></extra>"
+    ))
+    
+    # Cost breakdown as stacked bar
+    fig.add_trace(go.Bar(
+        x=results['Load Factor Value'] * 100,
+        y=results['Energy Charges ($)'],
+        name='Energy Charges',
+        marker_color='rgba(34, 197, 94, 0.7)',
+        yaxis='y2',
+        hovertemplate="<b>Load Factor: %{x:.0f}%</b><br>Energy: $%{y:.2f}<extra></extra>"
+    ))
+    
+    fig.add_trace(go.Bar(
+        x=results['Load Factor Value'] * 100,
+        y=results['Demand Charges ($)'],
+        name='Demand Charges',
+        marker_color='rgba(249, 115, 22, 0.7)',
+        yaxis='y2',
+        hovertemplate="<b>Load Factor: %{x:.0f}%</b><br>Demand: $%{y:.2f}<extra></extra>"
+    ))
+    
+    fig.add_trace(go.Bar(
+        x=results['Load Factor Value'] * 100,
+        y=results['Fixed Charges ($)'],
+        name='Fixed Charges',
+        marker_color='rgba(156, 163, 175, 0.7)',
+        yaxis='y2',
+        hovertemplate="<b>Load Factor: %{x:.0f}%</b><br>Fixed: $%{y:.2f}<extra></extra>"
+    ))
+    
+    fig.update_layout(
+        title=dict(
+            text="Effective Rate and Cost Breakdown by Load Factor",
+            font=dict(size=18, color='#1f2937' if not dark_mode else '#f1f5f9')
+        ),
+        xaxis=dict(
+            title=dict(
+                text="Load Factor (%)",
+                font=dict(color='#1f2937' if not dark_mode else '#f1f5f9')
+            ),
+            tickfont=dict(color='#1f2937' if not dark_mode else '#f1f5f9'),
+            tickmode='array',
+            tickvals=[1, 5, 10, 20, 30, 50, 100]
+        ),
+        yaxis=dict(
+            title=dict(
+                text="Effective Rate ($/kWh)",
+                font=dict(color='rgba(59, 130, 246, 0.8)')
+            ),
+            tickfont=dict(color='rgba(59, 130, 246, 0.8)'),
+            side='left'
+        ),
+        yaxis2=dict(
+            title=dict(
+                text="Cost ($)",
+                font=dict(color='#1f2937' if not dark_mode else '#f1f5f9')
+            ),
+            tickfont=dict(color='#1f2937' if not dark_mode else '#f1f5f9'),
+            overlaying='y',
+            side='right'
+        ),
+        barmode='stack',
+        height=500,
+        showlegend=True,
+        legend=dict(
+            font=dict(color='#1f2937' if not dark_mode else '#f1f5f9'),
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="right",
+            x=1
+        ),
+        plot_bgcolor='rgba(248, 250, 252, 0.8)' if not dark_mode else 'rgba(15, 23, 42, 0.5)',
+        paper_bgcolor='#ffffff' if not dark_mode else '#0f172a',
+        font=dict(family="Inter, sans-serif", color='#1f2937' if not dark_mode else '#f1f5f9')
+    )
+    
+    st.plotly_chart(fig, use_container_width=True)
