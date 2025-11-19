@@ -378,10 +378,14 @@ def _render_energy_schedule_section() -> None:
     tab1, tab2 = st.tabs(["Weekday Schedule", "Weekend Schedule"])
     
     with tab1:
-        _show_schedule_heatmap(data['energyweekdayschedule'], "Weekday", data['energytoulabels'])
+        _show_schedule_heatmap(data['energyweekdayschedule'], "Weekday", data['energytoulabels'],
+                              rate_structure=data.get('energyratestructure'),
+                              rate_type='energy')
     
     with tab2:
-        _show_schedule_heatmap(data['energyweekendschedule'], "Weekend", data['energytoulabels'])
+        _show_schedule_heatmap(data['energyweekendschedule'], "Weekend", data['energytoulabels'],
+                              rate_structure=data.get('energyratestructure'),
+                              rate_type='energy')
 
 
 def _render_simple_schedule_editor(data: Dict, num_periods: int) -> None:
@@ -568,8 +572,9 @@ def _render_template_editor(schedule_type: str, rate_type: str, num_periods: int
             with cols[hour % 6]:
                 if rate_type == 'energy':
                     format_func = lambda x: f"{data['energytoulabels'][x]}" if x < len(data.get('energytoulabels', [])) else f"P{x}"
-                else:
-                    format_func = lambda x: f"P{x}"
+                else:  # demand
+                    demand_labels = data.get('demandlabels', [f"Period {i}" for i in range(num_periods)])
+                    format_func = lambda x: f"{demand_labels[x]}" if x < len(demand_labels) else f"P{x}"
                 
                 period = st.selectbox(
                     f"{hour}:00",
@@ -662,7 +667,7 @@ def _render_month_assignment(schedule_type: str, rate_type: str, data: Dict) -> 
             st.write(f"**{template_name}**: No months assigned")
 
 
-def _apply_templates_to_schedule(data: Dict, rate_type: str) -> None:
+def _apply_templates_to_schedule(data: Dict, rate_type: str, same_schedule: bool = False) -> None:
     """Apply templates to generate the final schedule arrays."""
     template_key_weekday = _get_template_key('weekday', rate_type)
     template_key_weekend = _get_template_key('weekend', rate_type)
@@ -683,19 +688,26 @@ def _apply_templates_to_schedule(data: Dict, rate_type: str) -> None:
             data[schedule_key_weekday][month_idx] = assigned_template['schedule'].copy()
     
     # Apply weekend templates
-    weekend_templates = st.session_state[template_key_weekend]['weekend']
     schedule_key_weekend = _get_schedule_key('weekend', rate_type)
     
-    for month_idx in range(12):
-        # Find which template is assigned to this month
-        assigned_template = None
-        for template in weekend_templates.values():
-            if month_idx in template.get('assigned_months', []):
-                assigned_template = template
-                break
+    if same_schedule:
+        # If schedules are the same, copy weekday templates to weekend
+        for month_idx in range(12):
+            data[schedule_key_weekend][month_idx] = data[schedule_key_weekday][month_idx].copy()
+    else:
+        # Apply weekend templates normally
+        weekend_templates = st.session_state[template_key_weekend]['weekend']
         
-        if assigned_template:
-            data[schedule_key_weekend][month_idx] = assigned_template['schedule'].copy()
+        for month_idx in range(12):
+            # Find which template is assigned to this month
+            assigned_template = None
+            for template in weekend_templates.values():
+                if month_idx in template.get('assigned_months', []):
+                    assigned_template = template
+                    break
+            
+            if assigned_template:
+                data[schedule_key_weekend][month_idx] = assigned_template['schedule'].copy()
 
 
 def _render_advanced_schedule_editor(data: Dict, num_periods: int) -> None:
@@ -709,13 +721,34 @@ def _render_advanced_schedule_editor(data: Dict, num_periods: int) -> None:
             'weekend': _initialize_default_templates(data, 'energyweekendschedule', num_periods)
         }
     
-    schedule_type = st.radio("Schedule to edit:", ["Weekday", "Weekend"], horizontal=True, key="energy_schedule_type")
-    schedule_type_lower = schedule_type.lower()
+    # Initialize same schedule flag if not present
+    if 'energy_schedule_same_for_weekday_weekend' not in st.session_state:
+        st.session_state.energy_schedule_same_for_weekday_weekend = False
+    
+    # Add checkbox to indicate same schedule for weekday and weekend
+    same_schedule = st.checkbox(
+        "Weekday and weekend schedules are the same",
+        value=st.session_state.energy_schedule_same_for_weekday_weekend,
+        key="energy_same_schedule_checkbox",
+        help="Check this box if your tariff has the same time-of-use schedule for weekdays and weekends. You'll only need to configure the weekday schedule."
+    )
+    st.session_state.energy_schedule_same_for_weekday_weekend = same_schedule
+    
+    # If schedules are the same, only allow editing weekday
+    if same_schedule:
+        schedule_type_lower = 'weekday'
+        st.info("ℹ️ You are editing the schedule for both weekdays and weekends. The weekend schedule will automatically match the weekday schedule.")
+    else:
+        schedule_type = st.radio("Schedule to edit:", ["Weekday", "Weekend"], horizontal=True, key="energy_schedule_type")
+        schedule_type_lower = schedule_type.lower()
     
     # Three-step process
     st.markdown("---")
     st.markdown("### Step 1: Manage Templates")
-    st.info("💡 **Tip**: Create a template for each unique schedule that will occur in the tariff over a given year. For example, if your tariff has different rates for Summer, Winter, and Shoulder seasons, create three templates. **Remember to do this separately for Weekdays and Weekends** using the toggle button above.")
+    if same_schedule:
+        st.info("💡 **Tip**: Create a template for each unique schedule that will occur in the tariff over a given year. For example, if your tariff has different rates for Summer, Winter, and Shoulder seasons, create three templates.")
+    else:
+        st.info("💡 **Tip**: Create a template for each unique schedule that will occur in the tariff over a given year. For example, if your tariff has different rates for Summer, Winter, and Shoulder seasons, create three templates. **Remember to do this separately for Weekdays and Weekends** using the toggle button above.")
     _render_template_manager(schedule_type_lower, 'energy', num_periods, data)
     
     st.markdown("---")
@@ -727,13 +760,16 @@ def _render_advanced_schedule_editor(data: Dict, num_periods: int) -> None:
     _render_month_assignment(schedule_type_lower, 'energy', data)
     
     # Apply templates to generate final schedules
-    _apply_templates_to_schedule(data, 'energy')
+    _apply_templates_to_schedule(data, 'energy', same_schedule)
 
 
 def _render_simple_demand_schedule_editor(data: Dict, num_periods: int) -> None:
     """Render a simple demand schedule editor that applies the same pattern to all months."""
     st.markdown("#### Weekday Demand Schedule")
     st.info("💡 **Tip**: Fill in all hours, then click 'Apply Demand Schedule' at the bottom to update.")
+    
+    # Get demand labels
+    demand_labels = data.get('demandlabels', [f"Period {i}" for i in range(num_periods)])
     
     # Use a form to batch all 24+ hour selections
     form_key = f"simple_demand_schedule_form_{num_periods}_{id(data)}"
@@ -749,7 +785,7 @@ def _render_simple_demand_schedule_editor(data: Dict, num_periods: int) -> None:
                 period = st.selectbox(
                     f"Hour {hour}:00",
                     options=list(range(num_periods)),
-                    format_func=lambda x: f"Demand Period {x}",
+                    format_func=lambda x: f"{demand_labels[x]} (Period {x})",
                     key=f"simple_demand_weekday_{hour}",
                     index=data['demandweekdayschedule'][0][hour] if hour < len(data['demandweekdayschedule'][0]) else 0
                 )
@@ -760,7 +796,7 @@ def _render_simple_demand_schedule_editor(data: Dict, num_periods: int) -> None:
             # Show current schedule from data
             current_schedule_df = pd.DataFrame({
                 'Hour': [f"{h}:00" for h in range(24)],
-                'Period': [f"Period {data['demandweekdayschedule'][0][h]}" for h in range(24)]
+                'Period': [demand_labels[data['demandweekdayschedule'][0][h]] for h in range(24)]
             })
             st.dataframe(current_schedule_df, use_container_width=True, height=600)
         
@@ -817,13 +853,34 @@ def _render_advanced_demand_schedule_editor(data: Dict, num_periods: int) -> Non
             'weekend': _initialize_default_templates(data, 'demandweekendschedule', num_periods)
         }
     
-    schedule_type = st.radio("Schedule to edit:", ["Weekday", "Weekend"], horizontal=True, key="demand_schedule_type")
-    schedule_type_lower = schedule_type.lower()
+    # Initialize same schedule flag if not present
+    if 'demand_schedule_same_for_weekday_weekend' not in st.session_state:
+        st.session_state.demand_schedule_same_for_weekday_weekend = False
+    
+    # Add checkbox to indicate same schedule for weekday and weekend
+    same_schedule = st.checkbox(
+        "Weekday and weekend schedules are the same",
+        value=st.session_state.demand_schedule_same_for_weekday_weekend,
+        key="demand_same_schedule_checkbox",
+        help="Check this box if your tariff has the same time-of-use schedule for weekdays and weekends. You'll only need to configure the weekday schedule."
+    )
+    st.session_state.demand_schedule_same_for_weekday_weekend = same_schedule
+    
+    # If schedules are the same, only allow editing weekday
+    if same_schedule:
+        schedule_type_lower = 'weekday'
+        st.info("ℹ️ You are editing the schedule for both weekdays and weekends. The weekend schedule will automatically match the weekday schedule.")
+    else:
+        schedule_type = st.radio("Schedule to edit:", ["Weekday", "Weekend"], horizontal=True, key="demand_schedule_type")
+        schedule_type_lower = schedule_type.lower()
     
     # Three-step process
     st.markdown("---")
     st.markdown("### Step 1: Manage Templates")
-    st.info("💡 **Tip**: Create a template for each unique schedule that will occur in the tariff over a given year. For example, if your tariff has different rates for Summer, Winter, and Shoulder seasons, create three templates. **Remember to do this separately for Weekdays and Weekends** using the toggle button above.")
+    if same_schedule:
+        st.info("💡 **Tip**: Create a template for each unique schedule that will occur in the tariff over a given year. For example, if your tariff has different rates for Summer, Winter, and Shoulder seasons, create three templates.")
+    else:
+        st.info("💡 **Tip**: Create a template for each unique schedule that will occur in the tariff over a given year. For example, if your tariff has different rates for Summer, Winter, and Shoulder seasons, create three templates. **Remember to do this separately for Weekdays and Weekends** using the toggle button above.")
     _render_template_manager(schedule_type_lower, 'demand', num_periods, data)
     
     st.markdown("---")
@@ -835,18 +892,47 @@ def _render_advanced_demand_schedule_editor(data: Dict, num_periods: int) -> Non
     _render_month_assignment(schedule_type_lower, 'demand', data)
     
     # Apply templates to generate final schedules
-    _apply_templates_to_schedule(data, 'demand')
+    _apply_templates_to_schedule(data, 'demand', same_schedule)
 
 
-def _show_schedule_heatmap(schedule: List[List[int]], schedule_type: str, labels: List[str]) -> None:
-    """Display a heatmap visualization of the schedule."""
+def _show_schedule_heatmap(schedule: List[List[int]], schedule_type: str, labels: List[str], 
+                          rate_structure: List[List[Dict]] = None, rate_type: str = 'energy') -> None:
+    """Display a heatmap visualization of the schedule.
+    
+    Args:
+        schedule: 12x24 array of period indices
+        schedule_type: Description of schedule (e.g., "Weekday", "Demand Weekday")
+        labels: Period labels
+        rate_structure: Optional rate structure to display actual values instead of periods
+        rate_type: Type of rate ('energy' or 'demand') for formatting
+    """
     # Create DataFrame for the heatmap
-    schedule_df = pd.DataFrame(schedule, index=MONTHS, columns=HOURS)
+    if rate_structure is not None:
+        # Map period indices to actual rate values
+        rate_values = []
+        for month_schedule in schedule:
+            month_rates = []
+            for period_idx in month_schedule:
+                if period_idx < len(rate_structure):
+                    rate = rate_structure[period_idx][0].get('rate', 0.0)
+                    adj = rate_structure[period_idx][0].get('adj', 0.0)
+                    total_rate = rate + adj
+                    month_rates.append(total_rate)
+                else:
+                    month_rates.append(0.0)
+            rate_values.append(month_rates)
+        
+        schedule_df = pd.DataFrame(rate_values, index=MONTHS, columns=HOURS)
+        value_label = "Rate ($/kW)" if rate_type == 'demand' else "Rate ($/kWh)"
+    else:
+        # Display period indices
+        schedule_df = pd.DataFrame(schedule, index=MONTHS, columns=HOURS)
+        value_label = "Period Index"
     
     # Display as styled dataframe with fallback if matplotlib not available
     try:
         st.dataframe(
-            schedule_df.style.background_gradient(cmap='RdYlGn_r', axis=None),
+            schedule_df.style.background_gradient(cmap='RdYlGn_r', axis=None).format("{:.4f}" if rate_structure else "{:.0f}"),
             use_container_width=True
         )
     except ImportError:
@@ -859,7 +945,16 @@ def _show_schedule_heatmap(schedule: List[List[int]], schedule_type: str, labels
     legend_cols = st.columns(min(len(labels), 4))
     for i, label in enumerate(labels):
         with legend_cols[i % 4]:
-            st.markdown(f"**{i}:** {label}")
+            if rate_structure is not None and i < len(rate_structure):
+                rate = rate_structure[i][0].get('rate', 0.0)
+                adj = rate_structure[i][0].get('adj', 0.0)
+                total_rate = rate + adj
+                if rate_type == 'demand':
+                    st.markdown(f"**{i}:** {label} (${total_rate:.4f}/kW)")
+                else:
+                    st.markdown(f"**{i}:** {label} (${total_rate:.5f}/kWh)")
+            else:
+                st.markdown(f"**{i}:** {label}")
 
 
 def _render_demand_charges_section() -> None:
@@ -894,6 +989,8 @@ def _render_demand_charges_section() -> None:
         help="How many different demand rate periods?"
     )
     
+    st.info("💡 **Tip**: If your tariff has hours when no TOU-based demand charge applies (separate from flat monthly demands), include a period with a $0.00 rate. This allows you to schedule those zero-charge hours in the demand schedule below.")
+    
     # Adjust arrays
     if len(data['demandratestructure']) != num_periods:
         data['demandratestructure'] = [
@@ -902,12 +999,26 @@ def _render_demand_charges_section() -> None:
         ]
         data['demandweekdayschedule'] = [[0] * 24 for _ in range(12)]
         data['demandweekendschedule'] = [[0] * 24 for _ in range(12)]
+        data['demandlabels'] = [f"Period {i}" for i in range(num_periods)]
+    
+    # Ensure demandlabels exists and has correct length
+    if 'demandlabels' not in data or len(data['demandlabels']) != num_periods:
+        data['demandlabels'] = [f"Period {i}" for i in range(num_periods)]
     
     st.markdown("---")
     
     # Create input fields for each period
     for i in range(num_periods):
         with st.expander(f"🔌 Demand Period {i}", expanded=(i == 0)):
+            # Label input
+            label = st.text_input(
+                "Period Label",
+                value=data['demandlabels'][i] if i < len(data['demandlabels']) else f"Period {i}",
+                help="e.g., 'Peak', 'Mid-Peak', 'Off-Peak', 'No Charge'",
+                key=f"demand_label_{num_periods}_{i}"
+            )
+            data['demandlabels'][i] = label
+            
             col1, col2 = st.columns(2)
             
             with col1:
@@ -974,11 +1085,15 @@ def _render_demand_charges_section() -> None:
     
     with tab1:
         _show_schedule_heatmap(data['demandweekdayschedule'], "Demand Weekday", 
-                              [f"Period {i}" for i in range(num_periods)])
+                              data.get('demandlabels', [f"Period {i}" for i in range(num_periods)]),
+                              rate_structure=data.get('demandratestructure'),
+                              rate_type='demand')
     
     with tab2:
         _show_schedule_heatmap(data['demandweekendschedule'], "Demand Weekend",
-                              [f"Period {i}" for i in range(num_periods)])
+                              data.get('demandlabels', [f"Period {i}" for i in range(num_periods)]),
+                              rate_structure=data.get('demandratestructure'),
+                              rate_type='demand')
 
 
 def _render_flat_demand_section() -> None:
