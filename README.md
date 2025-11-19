@@ -48,6 +48,7 @@ A comprehensive, modular Streamlit application for viewing and editing utility r
 ### 🛠️ Tariff Builder (NEW!)
 - **Create Custom Tariffs**: Build new tariff JSON files from scratch through an intuitive GUI
 - **Wizard Interface**: 7-section guided workflow for easy tariff creation
+- **🤖 AI Schedule Assistant**: Generate energy schedules from natural language descriptions using OpenAI (optional)
 - **Visual Schedule Editor**: Set time-of-use schedules with simple or advanced modes
 - **Real-time Validation**: Ensure tariff data is complete and properly formatted
 - **Schedule Preview**: Visual heatmap showing your complete TOU schedule

@@ -5,7 +5,7 @@ This module contains application settings, paths, and configuration management.
 """
 
 from pathlib import Path
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Optional
 import os
 
 
@@ -111,3 +111,64 @@ class Settings:
             bool: True if debug mode is enabled
         """
         return os.getenv('DEBUG', 'false').lower() in ['true', '1', 'yes']
+    
+    @classmethod
+    def get_openai_api_key(cls) -> Optional[str]:
+        """
+        Get OpenAI API key from Streamlit secrets or environment.
+        
+        Returns:
+            Optional[str]: API key if configured, None otherwise
+        """
+        try:
+            import streamlit as st
+            # Try Streamlit secrets first (for production)
+            if hasattr(st, 'secrets') and 'openai' in st.secrets:
+                return st.secrets["openai"].get("api_key")
+        except Exception:
+            pass
+        
+        # Fallback to environment variable (for development)
+        return os.getenv('OPENAI_API_KEY')
+    
+    @classmethod
+    def get_openai_config(cls) -> Dict[str, Any]:
+        """
+        Get OpenAI configuration from Streamlit secrets or defaults.
+        
+        Returns:
+            Dict[str, Any]: OpenAI configuration with api_key, model, max_tokens
+        """
+        config = {
+            "api_key": None,
+            "model": "gpt-4o",  # gpt-4o required for accurate schedule generation
+            "max_tokens": 2000,
+            "temperature": 0.1
+        }
+        
+        try:
+            import streamlit as st
+            # Try to get from Streamlit secrets
+            if hasattr(st, 'secrets') and 'openai' in st.secrets:
+                config["api_key"] = st.secrets["openai"].get("api_key")
+                config["model"] = st.secrets["openai"].get("model", "gpt-4o")  # Default to gpt-4o
+                config["max_tokens"] = st.secrets["openai"].get("max_tokens", 2000)
+                config["temperature"] = st.secrets["openai"].get("temperature", 0.1)
+        except Exception:
+            pass
+        
+        # Fallback to environment variable for API key
+        if not config["api_key"]:
+            config["api_key"] = os.getenv('OPENAI_API_KEY')
+        
+        return config
+    
+    @classmethod
+    def has_openai_configured(cls) -> bool:
+        """
+        Check if OpenAI is properly configured.
+        
+        Returns:
+            bool: True if API key is available
+        """
+        return cls.get_openai_api_key() is not None

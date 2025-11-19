@@ -357,7 +357,11 @@ def _render_energy_schedule_section() -> None:
     data = st.session_state.tariff_builder_data['items'][0]
     num_periods = len(data['energyratestructure'])
     
+    # NEW: Add AI Schedule Assistant
+    _render_ai_schedule_assistant(data, num_periods)
+    
     # Schedule editing mode
+    st.markdown("---")
     st.markdown("#### Schedule Configuration")
     
     schedule_mode = st.radio(
@@ -1303,4 +1307,352 @@ def _save_tariff(data: Dict, filename: str) -> None:
         
     except Exception as e:
         st.error(f"❌ Error saving tariff: {str(e)}")
+
+
+# ============================================================================
+# AI Schedule Assistant Functions
+# ============================================================================
+
+def _render_ai_schedule_assistant(data: Dict, num_periods: int) -> None:
+    """
+    Render the optional AI schedule assistant.
+    
+    Args:
+        data: Tariff builder data
+        num_periods: Number of TOU periods
+    """
+    from src.services.ai_schedule_service import AIScheduleService
+    
+    st.markdown("### 🤖 AI Schedule Assistant (Optional)")
+    
+    with st.expander("✨ Generate Schedules from Text Description", expanded=False):
+        # Initialize AI service
+        ai_service = AIScheduleService()
+        
+        # Check prerequisites
+        st.markdown("#### Prerequisites")
+        
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            has_periods = num_periods > 0
+            status = "✅" if has_periods else "❌"
+            st.markdown(f"{status} **Energy Rate Structure:** {num_periods} periods")
+        
+        with col2:
+            has_labels = len(data.get('energytoulabels', [])) == num_periods
+            status = "✅" if has_labels else "❌"
+            st.markdown(f"{status} **Period Labels Defined**")
+        
+        with col3:
+            ai_available = ai_service.is_available()
+            status = "✅" if ai_available else "⚠️"
+            st.markdown(f"{status} **OpenAI API Key**")
+        
+        if not ai_available:
+            st.warning("""
+            ⚠️ **OpenAI API Key Not Configured**
+            
+            To use the AI Schedule Assistant, configure your OpenAI API key:
+            
+            **For Streamlit Cloud:**
+            1. Go to Streamlit Cloud Dashboard
+            2. Navigate to **App Settings → Secrets**
+            3. Add the following:
+            ```toml
+            [openai]
+            api_key = "sk-your-key-here"
+            model = "gpt-4o-mini"
+            ```
+            
+            **For Local Development:**
+            Create `.streamlit/secrets.toml` with the same content, or set the 
+            `OPENAI_API_KEY` environment variable.
+            
+            See the documentation for more details.
+            """)
+            return
+        
+        if not (has_periods and has_labels):
+            st.warning("⚠️ Please complete the **Energy Rate Structure** section first before using AI assistance.")
+            return
+        
+        # Initialize session state for AI usage tracking
+        if 'ai_usage_count' not in st.session_state:
+            st.session_state.ai_usage_count = 0
+        
+        # Show example
+        if st.button("📝 Show Example Description", key="ai_show_example"):
+            st.info("""
+            **Example Schedule Description:**
+            
+            "Summer rates apply from June through September. During summer months, 
+            On-Peak rates are from 4 PM to 9 PM on weekdays. Mid-Peak rates are from 
+            3 PM to 4 PM and 9 PM to 10 PM on weekdays. All other hours are Off-Peak. 
+            Weekends are all Off-Peak during summer.
+            
+            Winter rates apply from October through May. During winter months, 
+            Mid-Peak rates are from 4 PM to 9 PM on weekdays. All other hours are 
+            Off-Peak. Weekends are all Off-Peak."
+            """)
+        
+        # Input section
+        st.markdown("---")
+        st.markdown("#### Describe Your Schedule")
+        
+        description = st.text_area(
+            "Paste your rate schedule description here:",
+            height=200,
+            max_chars=2000,
+            help="Describe when different rate periods apply throughout the day, week, and year",
+            placeholder="Example: On-Peak rates are from 4 PM to 9 PM on weekdays during summer months (June-September)...",
+            key="ai_schedule_description"
+        )
+        
+        char_count = len(description)
+        
+        col1, col2 = st.columns([1, 1])
+        with col1:
+            st.caption(f"Characters: {char_count}/2000")
+        with col2:
+            if char_count > 0:
+                est_cost = ai_service.estimate_cost(description)
+                st.caption(f"Estimated cost: ${est_cost:.4f} per generation")
+        
+        # Usage tracking
+        max_requests = 10
+        if st.session_state.ai_usage_count >= max_requests:
+            st.error(f"⚠️ You've reached the limit of {max_requests} AI generations per session. Please refresh the page to continue.")
+            return
+        
+        st.caption(f"AI generations used: {st.session_state.ai_usage_count}/{max_requests} this session")
+        
+        # Generate button
+        col1, col2 = st.columns([1, 3])
+        
+        with col1:
+            generate_button = st.button(
+                "🤖 Generate Schedules",
+                type="primary",
+                disabled=char_count < 20,
+                use_container_width=True,
+                key="ai_generate_button"
+            )
+        
+        with col2:
+            if char_count < 20:
+                st.caption("⚠️ Please provide a more detailed description (at least 20 characters)")
+        
+        # Process AI request
+        if generate_button:
+            st.session_state.ai_usage_count += 1
+            
+            with st.spinner("🤖 AI is analyzing your schedule description... This may take 10-30 seconds."):
+                result = ai_service.parse_schedule_description(
+                    description=description,
+                    existing_period_labels=data['energytoulabels'],
+                    num_periods=num_periods
+                )
+            
+            if result["success"]:
+                # Store result in session state
+                st.session_state.ai_schedule_result = result
+                st.success("✅ Schedules generated successfully!")
+                st.rerun()
+            else:
+                st.error(f"❌ {result.get('error', 'Unknown error occurred')}")
+        
+        # Display results if available
+        if st.session_state.get('ai_schedule_result'):
+            _render_ai_schedule_results(data, st.session_state.ai_schedule_result, num_periods)
+
+
+def _render_ai_schedule_results(data: Dict, result: Dict, num_periods: int) -> None:
+    """
+    Render the AI-generated schedule results with preview and actions.
+    
+    Args:
+        data: Tariff builder data
+        result: AI generation result dictionary
+        num_periods: Number of TOU periods
+    """
+    st.markdown("---")
+    st.markdown("#### 📊 AI-Generated Schedules")
+    
+    # Confidence and explanation
+    confidence = result.get("confidence", 0)
+    explanation = result.get("explanation", "")
+    
+    col1, col2 = st.columns([1, 3])
+    
+    with col1:
+        # Visual confidence indicator
+        if confidence >= 0.8:
+            st.metric("Confidence", f"{confidence:.0%}", delta="High", delta_color="normal")
+        elif confidence >= 0.6:
+            st.metric("Confidence", f"{confidence:.0%}", delta="Medium", delta_color="off")
+        else:
+            st.metric("Confidence", f"{confidence:.0%}", delta="Low", delta_color="inverse")
+    
+    with col2:
+        st.info(f"**AI Explanation:** {explanation}")
+    
+    # Show warnings if any
+    warnings = result.get("warnings", [])
+    if warnings:
+        for warning in warnings:
+            st.warning(f"⚠️ {warning}")
+    
+    # Period mapping table
+    st.markdown("##### 🔗 Period Matching")
+    period_mapping = result.get("period_mapping", {})
+    
+    if period_mapping:
+        mapping_df = pd.DataFrame([
+            {"Detected in Description": detected, "Matched to Period": matched}
+            for detected, matched in period_mapping.items()
+        ])
+        st.dataframe(mapping_df, use_container_width=True, hide_index=True)
+    else:
+        st.info("No explicit period mapping detected. AI used existing period labels directly.")
+    
+    # Schedule previews
+    st.markdown("##### 📅 Schedule Preview")
+    
+    st.info("""
+    **⚠️ Validation Tip**: Carefully check that the time ranges match your description:
+    - Hour 16 = 4:00 PM - 4:59 PM
+    - Hour 20 = 8:00 PM - 8:59 PM (so "4PM-9PM" should be hours 16-20)
+    - Look for split periods (e.g., Mid-Peak may appear twice in different time blocks)
+    """)
+    
+    tab1, tab2 = st.tabs(["Weekday Schedule", "Weekend Schedule"])
+    
+    weekday_schedule = result.get("weekday_schedule", [])
+    weekend_schedule = result.get("weekend_schedule", [])
+    
+    with tab1:
+        _show_schedule_preview(weekday_schedule, data['energytoulabels'], "Weekday")
+    
+    with tab2:
+        _show_schedule_preview(weekend_schedule, data['energytoulabels'], "Weekend")
+    
+    # Action buttons
+    st.markdown("---")
+    st.markdown("##### ⚡ Next Steps")
+    
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        if st.button("✅ Apply to Simple Mode", type="primary", use_container_width=True, key="ai_apply_simple"):
+            # Apply directly to simple schedule
+            data['energyweekdayschedule'] = [weekday_schedule for _ in range(12)]
+            data['energyweekendschedule'] = [weekend_schedule for _ in range(12)]
+            st.success("✅ Schedules applied! Scroll down to see the schedule preview.")
+            st.session_state.ai_schedule_result = None  # Clear result
+            st.rerun()
+    
+    with col2:
+        if st.button("📋 Create as Templates", use_container_width=True, key="ai_create_templates"):
+            # Create templates in advanced mode
+            _create_templates_from_ai_result(data, result)
+            st.success("✅ Templates created! Switch to Advanced mode to customize.")
+            st.session_state.ai_schedule_result = None
+            st.rerun()
+    
+    with col3:
+        if st.button("✏️ Edit Manually", use_container_width=True, key="ai_edit_manual"):
+            # Pre-fill but let user edit
+            data['energyweekdayschedule'] = [weekday_schedule for _ in range(12)]
+            data['energyweekendschedule'] = [weekend_schedule for _ in range(12)]
+            st.session_state.ai_schedule_result = None
+            st.info("Schedules loaded. You can now edit them manually below.")
+            st.rerun()
+    
+    with col4:
+        if st.button("🔄 Try Again", use_container_width=True, key="ai_try_again"):
+            st.session_state.ai_schedule_result = None
+            st.rerun()
+
+
+def _show_schedule_preview(schedule: List[int], labels: List[str], title: str) -> None:
+    """
+    Show a visual preview of a 24-hour schedule.
+    
+    Args:
+        schedule: List of 24 period indices
+        labels: List of period labels
+        title: Title for the preview
+    """
+    # Create a visual representation with time ranges
+    schedule_data = []
+    for h in range(24):
+        # Format the hour range (e.g., "00:00-00:59")
+        hour_range = f"{h:02d}:00-{h:02d}:59"
+        
+        # Convert to 12-hour format for clarity
+        if h == 0:
+            hour_12 = "12:00 AM-12:59 AM"
+        elif h < 12:
+            hour_12 = f"{h:02d}:00 AM-{h:02d}:59 AM"
+        elif h == 12:
+            hour_12 = "12:00 PM-12:59 PM"
+        else:
+            hour_12 = f"{h-12:02d}:00 PM-{h-12:02d}:59 PM"
+        
+        period_idx = schedule[h] if h < len(schedule) else 0
+        period_label = labels[period_idx] if period_idx < len(labels) else "N/A"
+        
+        schedule_data.append({
+            'Hour': h,
+            '24-Hour': hour_range,
+            '12-Hour': hour_12,
+            'Period': period_label,
+            'Period #': period_idx
+        })
+    
+    schedule_df = pd.DataFrame(schedule_data)
+    
+    st.dataframe(
+        schedule_df,
+        use_container_width=True,
+        hide_index=True,
+        height=400
+    )
+
+
+def _create_templates_from_ai_result(data: Dict, result: Dict) -> None:
+    """
+    Create templates in advanced mode from AI results.
+    
+    Args:
+        data: Tariff builder data
+        result: AI generation result dictionary
+    """
+    # Initialize templates if needed
+    if 'energy_schedule_templates' not in st.session_state:
+        st.session_state.energy_schedule_templates = {
+            'weekday': {},
+            'weekend': {}
+        }
+    
+    # Create "AI Generated" templates
+    weekday_schedule = result.get("weekday_schedule", [])
+    weekend_schedule = result.get("weekend_schedule", [])
+    
+    st.session_state.energy_schedule_templates['weekday']['AI Generated'] = {
+        'name': 'AI Generated',
+        'schedule': weekday_schedule,
+        'assigned_months': list(range(12))  # Assign to all months
+    }
+    
+    st.session_state.energy_schedule_templates['weekend']['AI Generated'] = {
+        'name': 'AI Generated',
+        'schedule': weekend_schedule,
+        'assigned_months': list(range(12))  # Assign to all months
+    }
+    
+    # Apply templates to data
+    data['energyweekdayschedule'] = [weekday_schedule for _ in range(12)]
+    data['energyweekendschedule'] = [weekend_schedule for _ in range(12)]
 
