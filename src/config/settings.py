@@ -37,6 +37,33 @@ class Settings:
     APP_TITLE = "URDB Tariff Viewer"
     APP_VERSION = "2.0.0"
     
+    # OpenEI API Settings
+    OPENEI_API_URL = "https://api.openei.org/utility_rates"
+    OPENEI_API_VERSION = "7"
+    
+    @classmethod
+    def get_openei_api_key(cls) -> str:
+        """
+        Get OpenEI API key from Streamlit secrets or environment variable.
+        
+        Priority order:
+        1. Streamlit secrets (secrets.toml)
+        2. Environment variable (OPENEI_API_KEY)
+        
+        Returns:
+            str: OpenEI API key or empty string if not set
+        """
+        try:
+            import streamlit as st
+            # First check Streamlit secrets
+            if hasattr(st, 'secrets') and 'OPENEI_API_KEY' in st.secrets:
+                return st.secrets['OPENEI_API_KEY']
+        except Exception:
+            pass
+        
+        # Fall back to environment variable
+        return os.getenv('OPENEI_API_KEY', '')
+    
     @classmethod
     def get_streamlit_config(cls) -> Dict[str, Any]:
         """

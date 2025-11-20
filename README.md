@@ -12,6 +12,7 @@ A comprehensive, modular Streamlit application for viewing and editing utility r
 - **🎨 Modern UI**: Updated styling with improved user experience
 - **⚙️ Better Configuration**: Centralized settings and environment management
 - **🛠️ Tariff Builder**: NEW! Create custom tariff JSON files from scratch through an intuitive GUI
+- **🌐 OpenEI Import**: NEW! Import tariffs directly from OpenEI's API with one click
 
 ## Features
 
@@ -56,6 +57,16 @@ A comprehensive, modular Streamlit application for viewing and editing utility r
 - **No JSON Editing Required**: Build complex tariffs without manual file editing
 
 📚 **Documentation**: See `TARIFF_BUILDER_GUIDE.md` for detailed instructions and `TARIFF_BUILDER_QUICK_REFERENCE.md` for quick tips
+
+### 🌐 OpenEI Tariff Import (NEW!)
+- **Direct API Integration**: Import tariffs directly from OpenEI's Utility Rate Database
+- **Simple ID Entry**: Paste a tariff ID and import with one click
+- **Automatic Saving**: Imported tariffs saved automatically to user_data directory
+- **Smart Naming**: Files named using utility and rate name for easy identification
+- **Flexible Authentication**: Use secrets.toml (recommended), environment variable, or direct input for API key
+- **Override Capability**: Temporarily use a different API key without changing configuration
+
+📚 **Documentation**: See `OPENEI_IMPORT_QUICK_START.md` for quick setup or `OPENEI_IMPORT_FEATURE.md` for complete guide
 
 ## Installation
 
