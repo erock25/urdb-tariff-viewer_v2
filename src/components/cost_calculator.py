@@ -10,6 +10,7 @@ import plotly.graph_objects as go
 import plotly.express as px
 from typing import Dict, Any, Optional, Union
 from pathlib import Path
+from io import BytesIO
 
 from src.models.tariff import TariffViewer
 from src.services.calculation_service import CalculationService
@@ -986,7 +987,16 @@ def _render_load_factor_analysis_tool(tariff_viewer: TariffViewer, options: Dict
                     has_tou_demand=has_tou_demand,
                     has_flat_demand=has_flat_demand
                 )
-                _display_load_factor_results(results, options)
+                _display_load_factor_results(
+                    results, 
+                    options, 
+                    tariff_data=tariff_data,
+                    demand_inputs=demand_inputs,
+                    energy_percentages=energy_percentages,
+                    selected_month=selected_month,
+                    has_tou_demand=has_tou_demand,
+                    has_flat_demand=has_flat_demand
+                )
 
 
 def _calculate_load_factor_rates(
@@ -1146,13 +1156,189 @@ def _calculate_load_factor_rates(
     return pd.DataFrame(results)
 
 
-def _display_load_factor_results(results: pd.DataFrame, options: Dict[str, Any]) -> None:
+def _calculate_comprehensive_load_factor_breakdown(
+    results: pd.DataFrame,
+    tariff_data: Dict[str, Any],
+    demand_inputs: Dict[str, float],
+    energy_percentages: Dict[int, float],
+    selected_month: int,
+    has_tou_demand: bool,
+    has_flat_demand: bool
+) -> pd.DataFrame:
+    """
+    Calculate comprehensive breakdown table with all load factors and detailed rate components.
+    
+    Args:
+        results: Original results DataFrame
+        tariff_data: Tariff data dictionary
+        demand_inputs: Dictionary of demand values for each period
+        energy_percentages: Dictionary of energy percentages for each period
+        selected_month: Month index (0-11)
+        has_tou_demand: Whether tariff has TOU demand charges
+        has_flat_demand: Whether tariff has flat demand charges
+    
+    Returns:
+        DataFrame with comprehensive breakdown for all load factors
+    """
+    
+    # Calculate the maximum valid load factor based on user's energy distribution
+    period_hour_pcts = _calculate_period_hour_percentages(tariff_data, selected_month)
+    
+    max_valid_lf = 0.0
+    for period_idx, energy_pct in energy_percentages.items():
+        if energy_pct > 0 and period_idx in period_hour_pcts:
+            max_valid_lf += period_hour_pcts[period_idx] / 100.0
+    max_valid_lf = min(max_valid_lf, 1.0)
+    
+    # Hours in the selected month
+    hours_in_month = [744, 672, 744, 720, 744, 720, 744, 744, 720, 744, 720, 744]
+    hours = hours_in_month[selected_month]
+    
+    # Get all energy and demand structures
+    energy_structure = tariff_data.get('energyratestructure', [])
+    energy_labels = tariff_data.get('energyweekdaylabels', [])
+    
+    # Calculate peak demand
+    all_demands = [v for k, v in demand_inputs.items() if v > 0]
+    peak_demand = max(all_demands) if all_demands else 0
+    
+    # Build comprehensive rows
+    comprehensive_rows = []
+    
+    for idx, row in results.iterrows():
+        load_factor = row['Load Factor Value']
+        avg_load = row['Average Load (kW)']
+        total_energy = row['Total Energy (kWh)']
+        
+        # Start with base columns
+        comprehensive_row = {
+            'Load Factor': row['Load Factor'],
+            'Average Load (kW)': avg_load,
+            'Total Energy (kWh)': total_energy
+        }
+        
+        # Determine which energy distribution to use
+        if load_factor > max_valid_lf + 0.005:  # Small tolerance for floating point
+            # Use period hour percentages (forced operation in all periods)
+            effective_energy_pcts = period_hour_pcts
+        else:
+            # Use user-specified energy percentages (operational flexibility)
+            effective_energy_pcts = energy_percentages
+        
+        # Add energy period columns (include ALL periods, not just active ones)
+        for period_idx in range(len(energy_structure)):
+            period_label = energy_labels[period_idx] if period_idx < len(energy_labels) else f"Period {period_idx}"
+            
+            # Get rate for this period (always show rate even if not used)
+            rate = energy_structure[period_idx][0].get('rate', 0)
+            adj = energy_structure[period_idx][0].get('adj', 0)
+            total_rate = rate + adj
+            
+            # Get percentage for this period (0 if not present)
+            percentage = effective_energy_pcts.get(period_idx, 0)
+            period_energy = total_energy * (percentage / 100.0) if percentage > 0 else 0
+            
+            if period_energy > 0:
+                period_cost = period_energy * total_rate
+            else:
+                period_cost = 0
+            
+            comprehensive_row[f'{period_label} (kWh)'] = period_energy
+            comprehensive_row[f'{period_label} Rate ($/kWh)'] = total_rate
+            comprehensive_row[f'{period_label} Cost ($)'] = period_cost
+        
+        # Add TOU demand columns (include ALL periods)
+        if has_tou_demand:
+            demand_structure = tariff_data.get('demandratestructure', [])
+            demand_labels = tariff_data.get('demandtoulabels', [])
+            
+            for i in range(len(demand_structure)):
+                period_label = demand_labels[i] if i < len(demand_labels) else f"TOU Period {i}"
+                demand_key = f'tou_demand_{i}'
+                
+                # Get rate for this period (always show rate even if not used)
+                rate = demand_structure[i][0].get('rate', 0)
+                adj = demand_structure[i][0].get('adj', 0)
+                total_rate = rate + adj
+                
+                if demand_key in demand_inputs:
+                    demand_value = demand_inputs[demand_key]
+                    if demand_value > 0:
+                        demand_cost = demand_value * total_rate
+                    else:
+                        demand_cost = 0
+                else:
+                    demand_value = 0
+                    demand_cost = 0
+                
+                comprehensive_row[f'{period_label} Demand (kW)'] = demand_value
+                comprehensive_row[f'{period_label} Rate ($/kW)'] = total_rate
+                comprehensive_row[f'{period_label} Demand Cost ($)'] = demand_cost
+        
+        # Add flat demand columns
+        if has_flat_demand:
+            # Get the correct flat demand structure based on selected month (always show rate)
+            flatdemandmonths = tariff_data.get('flatdemandmonths', [0]*12)
+            flat_tier = flatdemandmonths[selected_month] if selected_month < len(flatdemandmonths) else 0
+            
+            flat_structure_list = tariff_data['flatdemandstructure']
+            if flat_tier < len(flat_structure_list):
+                flat_structure = flat_structure_list[flat_tier][0]
+            else:
+                flat_structure = flat_structure_list[0][0]
+            
+            rate = flat_structure.get('rate', 0)
+            adj = flat_structure.get('adj', 0)
+            total_rate = rate + adj
+            
+            if 'flat_demand' in demand_inputs:
+                demand_value = demand_inputs['flat_demand']
+                if demand_value > 0:
+                    demand_cost = demand_value * total_rate
+                else:
+                    demand_cost = 0
+            else:
+                demand_value = 0
+                demand_cost = 0
+            
+            comprehensive_row['Flat Demand (kW)'] = demand_value
+            comprehensive_row['Flat Demand Rate ($/kW)'] = total_rate
+            comprehensive_row['Flat Demand Cost ($)'] = demand_cost
+        
+        # Add summary columns
+        comprehensive_row['Total Demand Charges ($)'] = row['Demand Charges ($)']
+        comprehensive_row['Total Energy Charges ($)'] = row['Energy Charges ($)']
+        comprehensive_row['Fixed Charges ($)'] = row['Fixed Charges ($)']
+        comprehensive_row['Total Cost ($)'] = row['Total Cost ($)']
+        comprehensive_row['Effective Rate ($/kWh)'] = row['Effective Rate ($/kWh)']
+        
+        comprehensive_rows.append(comprehensive_row)
+    
+    return pd.DataFrame(comprehensive_rows)
+
+
+def _display_load_factor_results(
+    results: pd.DataFrame, 
+    options: Dict[str, Any],
+    tariff_data: Dict[str, Any] = None,
+    demand_inputs: Dict[str, float] = None,
+    energy_percentages: Dict[int, float] = None,
+    selected_month: int = 0,
+    has_tou_demand: bool = False,
+    has_flat_demand: bool = False
+) -> None:
     """
     Display load factor analysis results.
     
     Args:
         results: DataFrame with analysis results
         options: Display options
+        tariff_data: Tariff data dictionary (optional, for detailed breakdown)
+        demand_inputs: Dictionary of demand values for each period (optional)
+        energy_percentages: Dictionary of energy percentages for each period (optional)
+        selected_month: Month index 0-11 (optional)
+        has_tou_demand: Whether tariff has TOU demand charges (optional)
+        has_flat_demand: Whether tariff has flat demand charges (optional)
     """
     
     st.markdown("### 📊 Load Factor Analysis Results")
@@ -1203,6 +1389,20 @@ def _display_load_factor_results(results: pd.DataFrame, options: Dict[str, Any])
             "Total Cost ($)": st.column_config.NumberColumn("Total ($)", format="$%.2f"),
             "Effective Rate ($/kWh)": st.column_config.NumberColumn("Effective Rate", format="$%.4f")
         }
+    )
+    
+    # Add download button for Detailed Results Table
+    buffer = BytesIO()
+    with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+        display_df.to_excel(writer, sheet_name='Load Factor Analysis', index=False)
+    buffer.seek(0)
+    
+    st.download_button(
+        label="📥 Download Detailed Results as Excel",
+        data=buffer,
+        file_name="load_factor_detailed_results.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        key="download_detailed_results"
     )
     
     # Visualization
@@ -1301,3 +1501,110 @@ def _display_load_factor_results(results: pd.DataFrame, options: Dict[str, Any])
     )
     
     st.plotly_chart(fig, use_container_width=True)
+    
+    # Add comprehensive breakdown table if data is available
+    if tariff_data is not None and demand_inputs is not None and energy_percentages is not None:
+        st.markdown("---")
+        st.markdown("#### 📊 Comprehensive Breakdown Table")
+        st.caption("This table shows all load factors with detailed breakdowns by energy rate period and demand period. Periods not active in the selected month show 0 kWh or 0 kW.")
+        
+        # Calculate comprehensive breakdown
+        comprehensive_df = _calculate_comprehensive_load_factor_breakdown(
+            results=results,
+            tariff_data=tariff_data,
+            demand_inputs=demand_inputs,
+            energy_percentages=energy_percentages,
+            selected_month=selected_month,
+            has_tou_demand=has_tou_demand,
+            has_flat_demand=has_flat_demand
+        )
+        
+        # Build column configuration dynamically
+        column_config = {
+            "Load Factor": st.column_config.TextColumn("Load Factor", width="small"),
+            "Average Load (kW)": st.column_config.NumberColumn("Avg Load (kW)", format="%.2f"),
+            "Total Energy (kWh)": st.column_config.NumberColumn("Total Energy (kWh)", format="%.0f")
+        }
+        
+        # Add energy period columns
+        energy_structure = tariff_data.get('energyratestructure', [])
+        energy_labels = tariff_data.get('energyweekdaylabels', [])
+        for period_idx in range(len(energy_structure)):
+            period_label = energy_labels[period_idx] if period_idx < len(energy_labels) else f"Period {period_idx}"
+            column_config[f'{period_label} (kWh)'] = st.column_config.NumberColumn(
+                f'{period_label} (kWh)', format="%.0f", width="small"
+            )
+            column_config[f'{period_label} Rate ($/kWh)'] = st.column_config.NumberColumn(
+                f'{period_label} Rate ($/kWh)', format="$%.4f", width="small"
+            )
+            column_config[f'{period_label} Cost ($)'] = st.column_config.NumberColumn(
+                f'{period_label} Cost ($)', format="$%.2f", width="small"
+            )
+        
+        # Add TOU demand columns
+        if has_tou_demand:
+            demand_structure = tariff_data.get('demandratestructure', [])
+            demand_labels = tariff_data.get('demandtoulabels', [])
+            for i in range(len(demand_structure)):
+                period_label = demand_labels[i] if i < len(demand_labels) else f"TOU Period {i}"
+                column_config[f'{period_label} Demand (kW)'] = st.column_config.NumberColumn(
+                    f'{period_label} Demand (kW)', format="%.2f", width="small"
+                )
+                column_config[f'{period_label} Rate ($/kW)'] = st.column_config.NumberColumn(
+                    f'{period_label} Rate ($/kW)', format="$%.2f", width="small"
+                )
+                column_config[f'{period_label} Demand Cost ($)'] = st.column_config.NumberColumn(
+                    f'{period_label} Demand Cost ($)', format="$%.2f", width="small"
+                )
+        
+        # Add flat demand columns
+        if has_flat_demand:
+            column_config['Flat Demand (kW)'] = st.column_config.NumberColumn(
+                'Flat Demand (kW)', format="%.2f", width="small"
+            )
+            column_config['Flat Demand Rate ($/kW)'] = st.column_config.NumberColumn(
+                'Flat Demand Rate ($/kW)', format="$%.2f", width="small"
+            )
+            column_config['Flat Demand Cost ($)'] = st.column_config.NumberColumn(
+                'Flat Demand Cost ($)', format="$%.2f", width="small"
+            )
+        
+        # Add summary columns
+        column_config['Total Demand Charges ($)'] = st.column_config.NumberColumn(
+            'Total Demand ($)', format="$%.2f"
+        )
+        column_config['Total Energy Charges ($)'] = st.column_config.NumberColumn(
+            'Total Energy ($)', format="$%.2f"
+        )
+        column_config['Fixed Charges ($)'] = st.column_config.NumberColumn(
+            'Fixed ($)', format="$%.2f"
+        )
+        column_config['Total Cost ($)'] = st.column_config.NumberColumn(
+            'Total Cost ($)', format="$%.2f"
+        )
+        column_config['Effective Rate ($/kWh)'] = st.column_config.NumberColumn(
+            'Effective Rate ($/kWh)', format="$%.4f"
+        )
+        
+        # Display the comprehensive table
+        st.dataframe(
+            comprehensive_df,
+            use_container_width=True,
+            hide_index=True,
+            column_config=column_config,
+            height=min(400, 35 * len(comprehensive_df) + 38)  # Dynamic height based on rows
+        )
+        
+        # Add download button for Comprehensive Breakdown Table
+        buffer_comprehensive = BytesIO()
+        with pd.ExcelWriter(buffer_comprehensive, engine='openpyxl') as writer:
+            comprehensive_df.to_excel(writer, sheet_name='Comprehensive Breakdown', index=False)
+        buffer_comprehensive.seek(0)
+        
+        st.download_button(
+            label="📥 Download Comprehensive Breakdown as Excel",
+            data=buffer_comprehensive,
+            file_name="load_factor_comprehensive_breakdown.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            key="download_comprehensive_breakdown"
+        )
