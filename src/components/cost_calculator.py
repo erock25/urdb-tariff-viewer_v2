@@ -658,6 +658,96 @@ def _display_comparison_results(comparison_results: Dict[str, Any], options: Dic
         st.plotly_chart(fig, width="stretch")
 
 
+def _get_active_energy_periods_for_month(tariff_data: Dict[str, Any], month: int) -> set:
+    """
+    Determine which energy periods are actually present in a given month.
+    
+    Args:
+        tariff_data: Tariff data dictionary
+        month: Month index (0-11)
+    
+    Returns:
+        Set of period indices that appear in the selected month
+    """
+    active_periods = set()
+    
+    # Get schedules
+    weekday_schedule = tariff_data.get('energyweekdayschedule', [])
+    weekend_schedule = tariff_data.get('energyweekendschedule', [])
+    
+    # Check if month is valid and schedules exist
+    if month < len(weekday_schedule):
+        # Add all periods from weekday schedule for this month
+        active_periods.update(weekday_schedule[month])
+    
+    if month < len(weekend_schedule):
+        # Add all periods from weekend schedule for this month
+        active_periods.update(weekend_schedule[month])
+    
+    return active_periods
+
+
+def _calculate_period_hour_percentages(tariff_data: Dict[str, Any], month: int, year: int = 2024) -> Dict[int, float]:
+    """
+    Calculate what percentage of the month's hours each energy period is present.
+    
+    Args:
+        tariff_data: Tariff data dictionary
+        month: Month index (0-11)
+        year: Year for calendar calculation (default 2024)
+    
+    Returns:
+        Dictionary mapping period index to percentage of month (0-100)
+    """
+    import calendar
+    
+    # Get schedules
+    weekday_schedule = tariff_data.get('energyweekdayschedule', [])
+    weekend_schedule = tariff_data.get('energyweekendschedule', [])
+    
+    if month >= len(weekday_schedule) or month >= len(weekend_schedule):
+        return {}
+    
+    # Get the calendar for this month
+    cal = calendar.monthcalendar(year, month + 1)  # calendar uses 1-12 for months
+    
+    # Count weekdays and weekend days
+    weekday_count = 0
+    weekend_count = 0
+    
+    for week in cal:
+        for day_idx, day in enumerate(week):
+            if day == 0:  # Not part of this month
+                continue
+            if day_idx < 5:  # Monday-Friday (0-4)
+                weekday_count += 1
+            else:  # Saturday-Sunday (5-6)
+                weekend_count += 1
+    
+    # Count hours per period
+    period_hours = {}
+    
+    # Count from weekday schedule
+    for hour in range(24):
+        period = weekday_schedule[month][hour]
+        period_hours[period] = period_hours.get(period, 0) + weekday_count
+    
+    # Count from weekend schedule
+    for hour in range(24):
+        period = weekend_schedule[month][hour]
+        period_hours[period] = period_hours.get(period, 0) + weekend_count
+    
+    # Calculate total hours in month
+    total_hours = (weekday_count + weekend_count) * 24
+    
+    # Convert to percentages
+    period_percentages = {}
+    for period, hours in period_hours.items():
+        period_percentages[period] = (hours / total_hours * 100) if total_hours > 0 else 0
+    
+    return period_percentages
+
+
 def _render_load_factor_analysis_tool(tariff_viewer: TariffViewer, options: Dict[str, Any]) -> None:
     """
     Render the load factor analysis tool.
@@ -678,7 +768,11 @@ def _render_load_factor_analysis_tool(tariff_viewer: TariffViewer, options: Dict
         - Specify the maximum demand for each applicable demand period
         - Specify the energy distribution across all energy rate periods
         - Select the month of interest
-        - View effective rates for load factors: 1%, 5%, 10%, 20%, 30%, 50%, and 100%
+        - View effective rates from 1% up to the maximum valid load factor (in 1% increments), plus 100%
+        
+        **Note:** The maximum valid load factor is determined by your energy distribution. 
+        If you only allocate energy to periods representing 50% of the month's hours, results 
+        will be calculated from 1-50%, then 100%.
         """)
         
         tariff_data = tariff_viewer.tariff  # Use .tariff for actual tariff data
@@ -788,34 +882,64 @@ def _render_load_factor_analysis_tool(tariff_viewer: TariffViewer, options: Dict
         
         # Energy rate structure inputs
         st.markdown("##### 💡 Energy Distribution")
-        st.markdown("Specify the percentage of energy consumption in each rate period (must sum to 100%):")
         
         energy_structure = tariff_data.get('energyratestructure', [])
         energy_labels = tariff_data.get('energytoulabels', [])
         num_energy_periods = len(energy_structure)
         
+        # Get active periods for the selected month
+        active_periods = _get_active_energy_periods_for_month(tariff_data, selected_month)
+        
+        # Show info about which periods are active
+        if len(active_periods) < num_energy_periods:
+            inactive_periods = set(range(num_energy_periods)) - active_periods
+            inactive_labels = [energy_labels[i] if i < len(energy_labels) else f"Period {i}" 
+                             for i in sorted(inactive_periods)]
+            st.info(f"ℹ️ Only showing periods present in {month_names[selected_month]}. "
+                   f"The following periods are not scheduled this month: {', '.join(inactive_labels)}")
+        
+        # Calculate period hour percentages for the selected month
+        period_hour_percentages = _calculate_period_hour_percentages(tariff_data, selected_month)
+        
+        st.markdown("Specify the percentage of energy consumption in each rate period (must sum to 100%):")
+        st.caption("💡 **Note:** Your energy distribution determines the maximum **valid** load factor. If you allocate energy only to periods representing 50% of hours, calculations are valid up to 50% LF. Beyond that load factor, the facility would be forced to operate during periods where you allocated 0% energy, so calculations automatically use hour percentages instead.")
+        
         energy_percentages = {}
         total_percentage = 0.0
         
-        # Create columns for energy inputs
-        cols = st.columns(min(num_energy_periods, 3))
-        for i in range(num_energy_periods):
-            label = energy_labels[i] if i < len(energy_labels) else f"Energy Period {i}"
-            rate = energy_structure[i][0].get('rate', 0)
-            adj = energy_structure[i][0].get('adj', 0)
-            total_rate = rate + adj
-            
-            with cols[i % 3]:
-                energy_percentages[i] = st.number_input(
-                    f"{label}\n(${total_rate:.4f}/kWh)",
-                    min_value=0.0,
-                    max_value=100.0,
-                    value=0.0 if i > 0 else 100.0,  # Default first period to 100%
-                    step=1.0,
-                    key=f"lf_energy_pct_{i}",
-                    help=f"Base rate: ${rate:.4f}/kWh" + (f" + Adjustment: ${adj:.4f}/kWh" if adj != 0 else "")
-                )
-                total_percentage += energy_percentages[i]
+        # Only show active periods
+        active_periods_list = sorted(list(active_periods))
+        
+        if not active_periods_list:
+            st.warning("⚠️ No energy periods found in the schedule for this month. Please check the tariff data.")
+        else:
+            # Create columns for energy inputs
+            cols = st.columns(min(len(active_periods_list), 3))
+            for idx, i in enumerate(active_periods_list):
+                label = energy_labels[i] if i < len(energy_labels) else f"Energy Period {i}"
+                rate = energy_structure[i][0].get('rate', 0)
+                adj = energy_structure[i][0].get('adj', 0)
+                total_rate = rate + adj
+                
+                # Get the hour percentage for this period
+                hour_pct = period_hour_percentages.get(i, 0)
+                
+                with cols[idx % min(len(active_periods_list), 3)]:
+                    # Show period presence percentage
+                    st.caption(f"📊 {hour_pct:.1f}% of month's hours")
+                    
+                    # Default first active period to 100%, others to 0
+                    default_value = 100.0 if idx == 0 else 0.0
+                    energy_percentages[i] = st.number_input(
+                        f"{label}\n(${total_rate:.4f}/kWh)",
+                        min_value=0.0,
+                        max_value=100.0,
+                        value=default_value,
+                        step=1.0,
+                        key=f"lf_energy_pct_{i}",
+                        help=f"Base rate: ${rate:.4f}/kWh" + (f" + Adjustment: ${adj:.4f}/kWh" if adj != 0 else "") + f"\n\nThis period is present for {hour_pct:.1f}% of {month_names[selected_month]}'s hours"
+                    )
+                    total_percentage += energy_percentages[i]
         
         # Show percentage total
         percentage_color = "green" if abs(total_percentage - 100.0) < 0.01 else "red"
@@ -838,6 +962,22 @@ def _render_load_factor_analysis_tool(tariff_viewer: TariffViewer, options: Dict
             
             # Proceed with calculation if validation passed
             if validation_passed:
+                # Calculate max valid LF to inform the user
+                period_hour_percentages_for_msg = _calculate_period_hour_percentages(tariff_data, selected_month)
+                max_valid_lf_for_msg = 0.0
+                for period_idx, energy_pct in energy_percentages.items():
+                    if energy_pct > 0 and period_idx in period_hour_percentages_for_msg:
+                        max_valid_lf_for_msg += period_hour_percentages_for_msg[period_idx] / 100.0
+                max_valid_lf_for_msg = min(max_valid_lf_for_msg, 1.0)
+                
+                # Show info about load factor range
+                num_points = int(max_valid_lf_for_msg * 100)
+                if max_valid_lf_for_msg < 1.0:
+                    st.info(f"ℹ️ Based on your energy distribution, calculations are valid from 1% to {max_valid_lf_for_msg*100:.0f}% load factor ({num_points} data points). "
+                           f"Additionally, 100% load factor is calculated using hour percentages (constant 24/7 operation).")
+                else:
+                    st.info(f"ℹ️ Your energy distribution covers all TOU periods. Calculating from 1% to 100% load factor ({num_points} data points).")
+                
                 results = _calculate_load_factor_rates(
                     tariff_data=tariff_data,
                     demand_inputs=demand_inputs,
@@ -872,8 +1012,33 @@ def _calculate_load_factor_rates(
         DataFrame with load factor analysis results
     """
     
-    # Load factors to analyze
-    load_factors = [0.01, 0.05, 0.10, 0.20, 0.30, 0.50, 1.00]
+    # Calculate the maximum valid load factor based on user's energy distribution
+    # If user only allocates energy to periods representing X% of hours, 
+    # then max valid LF = X% (beyond that, facility must operate in periods with 0% energy)
+    period_hour_pcts = _calculate_period_hour_percentages(tariff_data, selected_month)
+    
+    max_valid_lf = 0.0
+    for period_idx, energy_pct in energy_percentages.items():
+        if energy_pct > 0 and period_idx in period_hour_pcts:
+            max_valid_lf += period_hour_pcts[period_idx] / 100.0
+    
+    # Cap at 100% (in case of rounding)
+    max_valid_lf = min(max_valid_lf, 1.0)
+    
+    # Generate load factors from 1% up to (but not exceeding) max_valid_lf in 1% increments
+    load_factors = []
+    for i in range(1, 101):  # 1% to 100%
+        lf = i / 100.0
+        if lf <= max_valid_lf:
+            load_factors.append(lf)
+        elif lf == 1.00:
+            # Always include 100% as final point (uses hour percentages)
+            load_factors.append(1.00)
+            break
+        else:
+            # Exceeded max_valid_lf, add 100% and stop
+            load_factors.append(1.00)
+            break
     
     # Hours in the selected month (approximate)
     hours_in_month = [744, 672, 744, 720, 744, 720, 744, 744, 720, 744, 720, 744]
@@ -938,7 +1103,17 @@ def _calculate_load_factor_rates(
         # Calculate energy charges
         total_energy_cost = 0
         if total_energy > 0:
-            for period_idx, percentage in energy_percentages.items():
+            # At load factors above max_valid_lf, energy distribution must match the TOU schedule
+            # (facility must operate during periods where user allocated 0% energy)
+            # Below max_valid_lf, use user-specified distribution (operational flexibility exists)
+            if lf > max_valid_lf + 0.005:  # Small tolerance for floating point
+                # Use period hour percentages (forced operation in all periods)
+                effective_energy_pcts = period_hour_pcts
+            else:
+                # Use user-specified energy percentages (operational flexibility)
+                effective_energy_pcts = energy_percentages
+            
+            for period_idx, percentage in effective_energy_pcts.items():
                 if percentage > 0 and period_idx < len(energy_structure):
                     # Energy in this period
                     period_energy = total_energy * (percentage / 100.0)
