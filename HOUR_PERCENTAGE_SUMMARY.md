@@ -235,7 +235,7 @@ The hour percentage label enhancement is **complete, tested, and ready for produ
 ### How to See It
 1. Open URDB JSON Viewer
 2. Load any tariff with TOU periods
-3. Navigate to "💰 Utility Cost Calculator" tab
+3. Navigate to "💰 Utility Cost Analysis" tab
 4. Expand "🔍 Load Factor Rate Analysis Tool"
 5. Select any month
 6. Look at Energy Distribution section

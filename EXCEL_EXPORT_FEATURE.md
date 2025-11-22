@@ -6,7 +6,7 @@ Added Excel export functionality to both tables in the Load Factor Rate Analysis
 
 ## Location
 
-Export buttons are located in the **💰 Utility Cost Calculator** tab, within the **"🔍 Load Factor Rate Analysis Tool"** expandable section:
+Export buttons are located in the **💰 Utility Cost Analysis** tab, within the **"🔍 Load Factor Rate Analysis Tool"** expandable section:
 1. Below the "Detailed Results Table"
 2. Below the "Comprehensive Breakdown Table"
 

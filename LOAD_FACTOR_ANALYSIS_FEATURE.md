@@ -2,11 +2,11 @@
 
 ## Overview
 
-The Load Factor Analysis Tool has been added to the **Utility Cost Calculator** section of the URDB JSON Viewer application. This tool allows users to calculate the effective utility rate ($/kWh) at different load factors for any tariff.
+The Load Factor Analysis Tool has been added to the **Utility Cost Analysis** section of the URDB JSON Viewer application. This tool allows users to calculate the effective utility rate ($/kWh) at different load factors for any tariff.
 
 ## Location
 
-The tool is accessible in the **💰 Utility Cost Calculator** tab as an expandable section titled **"🔍 Load Factor Rate Analysis Tool"**.
+The tool is accessible in the **💰 Utility Cost Analysis** tab as an expandable section titled **"🔍 Load Factor Rate Analysis Tool"**.
 
 ## Features
 

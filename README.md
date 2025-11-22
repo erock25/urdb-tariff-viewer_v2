@@ -28,7 +28,7 @@ A comprehensive, modular Streamlit application for viewing and editing utility r
 - **Demand Rate Editing**: Modify both time-of-use and flat demand rates
 - **Demand Charge Details**: Comprehensive information about demand charge structures
 
-### 💰 Utility Cost Calculator
+### 💰 Utility Cost Analysis
 - **Bill Calculations**: Calculate annual utility costs using real load profiles
 - **Cost Breakdowns**: Detailed analysis of energy, demand, and fixed charges
 - **Multiple Tariff Comparison**: Compare costs across different rate schedules

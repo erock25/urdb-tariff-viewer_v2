@@ -249,7 +249,7 @@ def main() -> None:
         "⚡ Energy Rates", 
         "🔌 Demand Rates", 
         "📊 Flat Demand", 
-        "💰 Utility Cost Calculator", 
+        "💰 Utility Cost Analysis", 
         "🔧 Load Profile Generator", 
         "📊 LP Analysis",
         "🏗️ Tariff Builder"

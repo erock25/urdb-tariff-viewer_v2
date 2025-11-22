@@ -2,11 +2,11 @@
 
 ## Overview
 
-Added a comprehensive breakdown table to the **Load Factor Rate Analysis Tool** in the Utility Cost Calculator. This new table appears below the "Effective Rate vs Load Factor" chart and provides complete visibility into energy and demand cost components for **all load factors** in a single wide table.
+Added a comprehensive breakdown table to the **Load Factor Rate Analysis Tool** in the Utility Cost Analysis. This new table appears below the "Effective Rate vs Load Factor" chart and provides complete visibility into energy and demand cost components for **all load factors** in a single wide table.
 
 ## Location
 
-The comprehensive breakdown table is located in the **💰 Utility Cost Calculator** tab, within the **"🔍 Load Factor Rate Analysis Tool"** expandable section, positioned directly below the "Effective Rate vs Load Factor" chart.
+The comprehensive breakdown table is located in the **💰 Utility Cost Analysis** tab, within the **"🔍 Load Factor Rate Analysis Tool"** expandable section, positioned directly below the "Effective Rate vs Load Factor" chart.
 
 ## New Features
 

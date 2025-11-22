@@ -197,6 +197,8 @@ class TariffViewer:
         Returns:
             pd.DataFrame: Table with TOU period information
         """
+        import calendar
+        
         energy_labels = self.tariff.get('energytoulabels', None)
         energy_rates = self.tariff.get('energyratestructure', [])
 
@@ -207,6 +209,40 @@ class TariffViewer:
         # Get weekday and weekend schedules
         weekday_schedule = self.tariff.get('energyweekdayschedule', [])
         weekend_schedule = self.tariff.get('energyweekendschedule', [])
+
+        # Calculate annual hours for each period
+        period_hours = {}
+        total_hours = 0
+        year = 2024  # Reference year for calendar calculations
+        
+        if len(weekday_schedule) >= 12 and len(weekend_schedule) >= 12:
+            for month in range(12):
+                # Get the calendar for this month
+                cal = calendar.monthcalendar(year, month + 1)
+                
+                # Count weekdays and weekend days
+                weekday_count = 0
+                weekend_count = 0
+                
+                for week in cal:
+                    for day_idx, day in enumerate(week):
+                        if day == 0:  # Not part of this month
+                            continue
+                        if day_idx < 5:  # Monday-Friday (0-4)
+                            weekday_count += 1
+                        else:  # Saturday-Sunday (5-6)
+                            weekend_count += 1
+                
+                # Count hours per period for this month
+                for hour in range(24):
+                    period = weekday_schedule[month][hour]
+                    period_hours[period] = period_hours.get(period, 0) + weekday_count
+                
+                for hour in range(24):
+                    period = weekend_schedule[month][hour]
+                    period_hours[period] = period_hours.get(period, 0) + weekend_count
+                
+                total_hours += (weekday_count + weekend_count) * 24
 
         # Create table data
         table_data = []
@@ -232,12 +268,18 @@ class TariffViewer:
 
                 # Determine which months this TOU period appears in
                 months_present = self._get_months_for_tou_period(i, weekday_schedule, weekend_schedule)
+                
+                # Get hours and percentage for this period
+                hours = period_hours.get(i, 0)
+                percentage = (hours / total_hours * 100) if total_hours > 0 else 0
 
                 table_data.append({
                     'TOU Period': period_label,
                     'Base Rate ($/kWh)': f"${rate:.4f}",
                     'Adjustment ($/kWh)': f"${adj:.4f}",
                     'Total Rate ($/kWh)': f"${total_rate:.4f}",
+                    'Hours/Year': hours,
+                    '% of Year': f"{percentage:.1f}%",
                     'Months Present': months_present
                 })
 

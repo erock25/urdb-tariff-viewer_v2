@@ -54,6 +54,15 @@ def render_energy_rates_tab(tariff_viewer: TariffViewer, options: Dict[str, Any]
                         "Total Rate ($/kWh)",
                         width="small",
                     ),
+                    "Hours/Year": st.column_config.NumberColumn(
+                        "Hours/Year",
+                        width="small",
+                        format="%d"
+                    ),
+                    "% of Year": st.column_config.TextColumn(
+                        "% of Year",
+                        width="small",
+                    ),
                     "Months Present": st.column_config.TextColumn(
                         "Months Present",
                         width="large",

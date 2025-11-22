@@ -155,7 +155,7 @@ The enhancement is **complete, tested, and ready for production use**. The Load 
 ### Try It Out
 1. Open the URDB JSON Viewer app
 2. Load a tariff with seasonal periods (e.g., separate summer/winter rates)
-3. Navigate to "💰 Utility Cost Calculator" tab
+3. Navigate to "💰 Utility Cost Analysis" tab
 4. Expand "🔍 Load Factor Rate Analysis Tool"
 5. Change the month selection
 6. Watch the energy period inputs dynamically update!
