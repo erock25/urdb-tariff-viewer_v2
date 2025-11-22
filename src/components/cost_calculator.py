@@ -688,6 +688,35 @@ def _get_active_energy_periods_for_month(tariff_data: Dict[str, Any], month: int
     return active_periods
 
 
+def _get_active_demand_periods_for_month(tariff_data: Dict[str, Any], month: int) -> set:
+    """
+    Determine which demand periods are actually present in a given month.
+    
+    Args:
+        tariff_data: Tariff data dictionary
+        month: Month index (0-11)
+    
+    Returns:
+        Set of period indices that appear in the selected month
+    """
+    active_periods = set()
+    
+    # Get schedules
+    weekday_schedule = tariff_data.get('demandweekdayschedule', [])
+    weekend_schedule = tariff_data.get('demandweekendschedule', [])
+    
+    # Check if month is valid and schedules exist
+    if month < len(weekday_schedule):
+        # Add all periods from weekday schedule for this month
+        active_periods.update(weekday_schedule[month])
+    
+    if month < len(weekend_schedule):
+        # Add all periods from weekend schedule for this month
+        active_periods.update(weekend_schedule[month])
+    
+    return active_periods
+
+
 def _calculate_period_hour_percentages(tariff_data: Dict[str, Any], month: int, year: int = 2024) -> Dict[int, float]:
     """
     Calculate what percentage of the month's hours each energy period is present.
@@ -769,11 +798,11 @@ def _render_load_factor_analysis_tool(tariff_viewer: TariffViewer, options: Dict
         - Specify the maximum demand for each applicable demand period
         - Specify the energy distribution across all energy rate periods
         - Select the month of interest
-        - View effective rates from 1% up to the maximum valid load factor (in 1% increments), plus 100%
+        - View effective rates from 1% up to the maximum physically possible load factor (in 1% increments), plus 100%
         
-        **Note:** The maximum valid load factor is determined by your energy distribution. 
-        If you only allocate energy to periods representing 50% of the month's hours, results 
-        will be calculated from 1-50%, then 100%.
+        **Note:** The maximum physically possible load factor is determined by your energy distribution. 
+        For each period: LF ≤ (hour %) / (energy %). The tool uses the most restrictive constraint.
+        Example: if a period is 20% of hours but you allocate 40% of energy there, max LF = 50%.
         """)
         
         tariff_data = tariff_viewer.tariff  # Use .tariff for actual tariff data
@@ -805,22 +834,39 @@ def _render_load_factor_analysis_tool(tariff_viewer: TariffViewer, options: Dict
             demand_labels = tariff_data.get('demandtoulabels', [])
             num_demand_periods = len(tariff_data['demandratestructure'])
             
-            cols = st.columns(min(num_demand_periods, 3))
-            for i in range(num_demand_periods):
-                label = demand_labels[i] if i < len(demand_labels) else f"Demand Period {i}"
-                rate = tariff_data['demandratestructure'][i][0].get('rate', 0)
-                adj = tariff_data['demandratestructure'][i][0].get('adj', 0)
-                total_rate = rate + adj
-                
-                with cols[i % 3]:
-                    demand_inputs[f'tou_demand_{i}'] = st.number_input(
-                        f"{label}\n(${total_rate:.2f}/kW)",
-                        min_value=0.0,
-                        value=0.0,
-                        step=1.0,
-                        key=f"lf_tou_demand_{i}",
-                        help=f"Base rate: ${rate:.2f}/kW" + (f" + Adjustment: ${adj:.2f}/kW" if adj != 0 else "")
-                    )
+            # Get active demand periods for the selected month
+            active_demand_periods = _get_active_demand_periods_for_month(tariff_data, selected_month)
+            
+            # Show info about which periods are active
+            if len(active_demand_periods) < num_demand_periods:
+                inactive_periods = set(range(num_demand_periods)) - active_demand_periods
+                inactive_labels = [demand_labels[i] if i < len(demand_labels) else f"Period {i}" 
+                                 for i in sorted(inactive_periods)]
+                st.info(f"ℹ️ Only showing demand periods present in {month_names[selected_month]}. "
+                       f"The following demand periods are not scheduled this month: {', '.join(inactive_labels)}")
+            
+            # Only show active periods
+            active_demand_periods_list = sorted(list(active_demand_periods))
+            
+            if not active_demand_periods_list:
+                st.warning("⚠️ No demand periods found in the schedule for this month. Please check the tariff data.")
+            else:
+                cols = st.columns(min(len(active_demand_periods_list), 3))
+                for idx, i in enumerate(active_demand_periods_list):
+                    label = demand_labels[i] if i < len(demand_labels) else f"Demand Period {i}"
+                    rate = tariff_data['demandratestructure'][i][0].get('rate', 0)
+                    adj = tariff_data['demandratestructure'][i][0].get('adj', 0)
+                    total_rate = rate + adj
+                    
+                    with cols[idx % min(len(active_demand_periods_list), 3)]:
+                        demand_inputs[f'tou_demand_{i}'] = st.number_input(
+                            f"{label}\n(${total_rate:.2f}/kW)",
+                            min_value=0.0,
+                            value=0.0,
+                            step=1.0,
+                            key=f"lf_tou_demand_{i}_{selected_month}",
+                            help=f"Base rate: ${rate:.2f}/kW" + (f" + Adjustment: ${adj:.2f}/kW" if adj != 0 else "")
+                        )
         
         # Flat demand input
         if has_flat_demand:
@@ -903,7 +949,7 @@ def _render_load_factor_analysis_tool(tariff_viewer: TariffViewer, options: Dict
         period_hour_percentages = _calculate_period_hour_percentages(tariff_data, selected_month)
         
         st.markdown("Specify the percentage of energy consumption in each rate period (must sum to 100%):")
-        st.caption("💡 **Note:** Your energy distribution determines the maximum **valid** load factor. If you allocate energy only to periods representing 50% of hours, calculations are valid up to 50% LF. Beyond that load factor, the facility would be forced to operate during periods where you allocated 0% energy, so calculations automatically use hour percentages instead.")
+        st.caption("💡 **Note:** Your energy distribution determines the maximum **physically possible** load factor. For each period, the constraint is: LF ≤ (hour %) / (energy %). Example: if a period represents 20% of hours but you allocate 40% of energy there, max LF = 50% (otherwise power would exceed peak demand). Beyond the max physical LF, calculations use hour percentages (representing constant 24/7 operation at 100% LF).")
         
         energy_percentages = {}
         total_percentage = 0.0
@@ -965,19 +1011,26 @@ def _render_load_factor_analysis_tool(tariff_viewer: TariffViewer, options: Dict
             if validation_passed:
                 # Calculate max valid LF to inform the user
                 period_hour_percentages_for_msg = _calculate_period_hour_percentages(tariff_data, selected_month)
-                max_valid_lf_for_msg = 0.0
+                max_valid_lf_for_msg = 1.0
                 for period_idx, energy_pct in energy_percentages.items():
                     if energy_pct > 0 and period_idx in period_hour_percentages_for_msg:
-                        max_valid_lf_for_msg += period_hour_percentages_for_msg[period_idx] / 100.0
+                        hour_pct = period_hour_percentages_for_msg[period_idx]
+                        if hour_pct > 0:
+                            period_max_lf = hour_pct / energy_pct
+                            max_valid_lf_for_msg = min(max_valid_lf_for_msg, period_max_lf)
+                        else:
+                            max_valid_lf_for_msg = 0.0
                 max_valid_lf_for_msg = min(max_valid_lf_for_msg, 1.0)
                 
                 # Show info about load factor range
                 num_points = int(max_valid_lf_for_msg * 100)
                 if max_valid_lf_for_msg < 1.0:
-                    st.info(f"ℹ️ Based on your energy distribution, calculations are valid from 1% to {max_valid_lf_for_msg*100:.0f}% load factor ({num_points} data points). "
-                           f"Additionally, 100% load factor is calculated using hour percentages (constant 24/7 operation).")
+                    st.info(f"ℹ️ Maximum physically possible load factor: **{max_valid_lf_for_msg*100:.1f}%** (based on your energy distribution). "
+                           f"Calculations from 1% to {max_valid_lf_for_msg*100:.1f}% LF use your specified energy distribution ({num_points} data points). "
+                           f"Additionally, 100% LF is calculated using hour percentages (constant 24/7 operation at full power).")
                 else:
-                    st.info(f"ℹ️ Your energy distribution covers all TOU periods. Calculating from 1% to 100% load factor ({num_points} data points).")
+                    st.info(f"ℹ️ Your energy distribution allows calculations up to 100% load factor ({num_points} data points). "
+                           f"At 100% LF, energy distribution matches hour percentages (constant 24/7 operation).")
                 
                 results = _calculate_load_factor_rates(
                     tariff_data=tariff_data,
@@ -1022,17 +1075,25 @@ def _calculate_load_factor_rates(
         DataFrame with load factor analysis results
     """
     
-    # Calculate the maximum valid load factor based on user's energy distribution
-    # If user only allocates energy to periods representing X% of hours, 
-    # then max valid LF = X% (beyond that, facility must operate in periods with 0% energy)
+    # Calculate the maximum physically possible load factor based on user's energy distribution
+    # For each period: power_required = (energy_pct / hour_pct) * avg_load
+    # This can't exceed peak_demand, so: LF <= hour_pct / energy_pct for each period
+    # Maximum LF is the minimum of these ratios across all periods with energy
     period_hour_pcts = _calculate_period_hour_percentages(tariff_data, selected_month)
     
-    max_valid_lf = 0.0
+    max_valid_lf = 1.0  # Start at 100%
     for period_idx, energy_pct in energy_percentages.items():
         if energy_pct > 0 and period_idx in period_hour_pcts:
-            max_valid_lf += period_hour_pcts[period_idx] / 100.0
+            hour_pct = period_hour_pcts[period_idx]
+            if hour_pct > 0:
+                # This period constrains max LF to hour_pct / energy_pct
+                period_max_lf = hour_pct / energy_pct
+                max_valid_lf = min(max_valid_lf, period_max_lf)
+            else:
+                # Period has energy but 0 hours - physically impossible
+                max_valid_lf = 0.0
     
-    # Cap at 100% (in case of rounding)
+    # Cap at 100% (in case user under-allocates energy everywhere)
     max_valid_lf = min(max_valid_lf, 1.0)
     
     # Generate load factors from 1% up to (but not exceeding) max_valid_lf in 1% increments
@@ -1181,13 +1242,18 @@ def _calculate_comprehensive_load_factor_breakdown(
         DataFrame with comprehensive breakdown for all load factors
     """
     
-    # Calculate the maximum valid load factor based on user's energy distribution
+    # Calculate the maximum physically possible load factor based on user's energy distribution
     period_hour_pcts = _calculate_period_hour_percentages(tariff_data, selected_month)
     
-    max_valid_lf = 0.0
+    max_valid_lf = 1.0
     for period_idx, energy_pct in energy_percentages.items():
         if energy_pct > 0 and period_idx in period_hour_pcts:
-            max_valid_lf += period_hour_pcts[period_idx] / 100.0
+            hour_pct = period_hour_pcts[period_idx]
+            if hour_pct > 0:
+                period_max_lf = hour_pct / energy_pct
+                max_valid_lf = min(max_valid_lf, period_max_lf)
+            else:
+                max_valid_lf = 0.0
     max_valid_lf = min(max_valid_lf, 1.0)
     
     # Hours in the selected month
