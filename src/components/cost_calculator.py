@@ -964,6 +964,28 @@ def _render_load_factor_analysis_tool(tariff_viewer: TariffViewer, options: Dict
     
     tariff_data = tariff_viewer.tariff  # Use .tariff for actual tariff data
     
+    # Show what rate structures are present in this tariff
+    has_tou_demand_check = bool(tariff_data.get('demandratestructure'))
+    has_flat_demand_check = bool(tariff_data.get('flatdemandstructure'))
+    has_energy_structure = bool(tariff_data.get('energyratestructure'))
+    
+    rate_structure_info = []
+    if has_tou_demand_check:
+        rate_structure_info.append("Time-of-Use Demand Charges")
+    if has_flat_demand_check:
+        rate_structure_info.append("Flat Monthly Demand Charges")
+    if has_energy_structure:
+        num_energy_periods = len(tariff_data.get('energyratestructure', []))
+        if num_energy_periods == 1:
+            rate_structure_info.append("Flat Energy Rate (no time-of-use periods)")
+        else:
+            rate_structure_info.append(f"{num_energy_periods} Time-of-Use Energy Periods")
+    
+    if rate_structure_info:
+        st.info(f"📊 **This tariff includes:** {', '.join(rate_structure_info)}")
+    else:
+        st.warning("⚠️ No rate structure information found in this tariff.")
+    
     # Analysis period selection
     month_names = ['January', 'February', 'March', 'April', 'May', 'June',
                   'July', 'August', 'September', 'October', 'November', 'December']
@@ -1195,8 +1217,17 @@ def _render_load_factor_analysis_tool(tariff_viewer: TariffViewer, options: Dict
         # Only show active periods
         active_periods_list = sorted(list(active_periods))
         
+        # Fallback: if no periods found in schedule, use all periods from energy structure
+        if not active_periods_list and num_energy_periods > 0:
+            st.warning(f"⚠️ No energy periods found in the schedule. Using all {num_energy_periods} period(s) from energy rate structure.")
+            active_periods_list = list(range(num_energy_periods))
+            # Calculate hour percentages assuming equal distribution
+            if not period_hour_percentages:
+                period_hour_percentages = {i: 100.0 / num_energy_periods for i in range(num_energy_periods)}
+        
         if not active_periods_list:
-            st.warning(f"⚠️ No energy periods found in the schedule. Please check the tariff data.")
+            st.error(f"⚠️ No energy rate structure found in this tariff.")
+            st.write("This tariff does not appear to have energy rate information configured.")
         else:
             # Create columns for energy inputs
             cols = st.columns(min(len(active_periods_list), 3))
