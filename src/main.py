@@ -21,7 +21,11 @@ from src.components.sidebar import create_sidebar
 from src.components.energy_rates import render_energy_rates_tab
 from src.components.demand_rates import render_demand_rates_tab
 from src.components.flat_demand_rates import render_flat_demand_rates_tab
-from src.components.cost_calculator import render_cost_calculator_tab
+from src.components.cost_calculator import (
+    render_cost_calculator_tab,
+    render_load_factor_analysis_tab,
+    render_utility_cost_calculation_tab
+)
 from src.components.load_generator import render_load_generator_tab
 from src.components.tariff_builder import render_tariff_builder_tab
 
@@ -172,8 +176,9 @@ def render_tariff_information_section(tariff_viewer: TariffViewer) -> None:
     Args:
         tariff_viewer (TariffViewer): TariffViewer instance
     """
-    st.markdown(create_custom_divider_html(), unsafe_allow_html=True)
-    st.markdown(create_section_header_html("📋 Tariff Information"), unsafe_allow_html=True)
+    from datetime import datetime
+    
+    st.markdown(create_section_header_html("📋 Basic Tariff Information"), unsafe_allow_html=True)
     
     # Basic information metrics
     col1, col2, col3 = st.columns(3)
@@ -202,12 +207,160 @@ def render_tariff_information_section(tariff_viewer: TariffViewer) -> None:
         </div>
         """, unsafe_allow_html=True)
     
-    
     # Description
     st.markdown(create_section_header_html("📝 Description"), unsafe_allow_html=True)
     st.markdown(tariff_viewer.description)
     
+    # Critical Cost Information
+    st.markdown(create_section_header_html("💰 Cost Information"), unsafe_allow_html=True)
+    
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        fixed_charge = tariff_viewer.tariff.get('fixedchargefirstmeter', None)
+        fixed_charge_units = tariff_viewer.tariff.get('fixedchargeunits', '$/month')
+        if fixed_charge is not None:
+            st.metric("Fixed Monthly Charge", f"${fixed_charge:,.2f}", delta=fixed_charge_units)
+        else:
+            st.metric("Fixed Monthly Charge", "Not specified")
+    
+    with col2:
+        min_charge = tariff_viewer.tariff.get('mincharge', None)
+        min_charge_units = tariff_viewer.tariff.get('minchargeunits', '$/month')
+        if min_charge is not None:
+            st.metric("Minimum Monthly Charge", f"${min_charge:,.2f}", delta=min_charge_units)
+        else:
+            st.metric("Minimum Monthly Charge", "Not specified")
+    
+    with col3:
+        start_date = tariff_viewer.tariff.get('startdate', None)
+        if start_date:
+            # Convert Unix timestamp to readable date
+            date_obj = datetime.fromtimestamp(start_date)
+            formatted_date = date_obj.strftime('%B %d, %Y')
+            st.metric("Effective Date", formatted_date)
+        else:
+            st.metric("Effective Date", "Not specified")
+    
+    # Service Requirements
+    st.markdown(create_section_header_html("⚙️ Service Requirements"), unsafe_allow_html=True)
+    
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        service_type = tariff_viewer.tariff.get('servicetype', 'Not specified')
+        st.markdown(f"""
+        <div class="metric-card">
+            <h3>Service Type</h3>
+            <p>{service_type}</p>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col2:
+        voltage = tariff_viewer.tariff.get('voltagecategory', 'Not specified')
+        st.markdown(f"""
+        <div class="metric-card">
+            <h3>Voltage Category</h3>
+            <p>{voltage}</p>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col3:
+        phase = tariff_viewer.tariff.get('phasewiring', 'Not specified')
+        st.markdown(f"""
+        <div class="metric-card">
+            <h3>Phase Wiring</h3>
+            <p>{phase}</p>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col4:
+        country = tariff_viewer.tariff.get('country', 'Not specified')
+        st.markdown(f"""
+        <div class="metric-card">
+            <h3>Country</h3>
+            <p>{country}</p>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    # Capacity Requirements (if present)
+    min_capacity = tariff_viewer.tariff.get('peakkwcapacitymin', None)
+    max_capacity = tariff_viewer.tariff.get('peakkwcapacitymax', None)
+    
+    if min_capacity is not None or max_capacity is not None:
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            if min_capacity is not None:
+                st.metric("Minimum Peak Capacity", f"{min_capacity:,.0f} kW")
+            else:
+                st.metric("Minimum Peak Capacity", "Not specified")
+        
+        with col2:
+            if max_capacity is not None:
+                st.metric("Maximum Peak Capacity", f"{max_capacity:,.0f} kW")
+            else:
+                st.metric("Maximum Peak Capacity", "Not specified")
+    
+    # Documentation & Sources
+    st.markdown(create_section_header_html("📚 Documentation & Sources"), unsafe_allow_html=True)
+    
+    eiaid = tariff_viewer.tariff.get('eiaid', None)
+    if eiaid:
+        st.info(f"**EIA Utility ID:** {eiaid}")
+    
+    source = tariff_viewer.tariff.get('source', None)
+    if source:
+        st.markdown(f"**📄 Source Document:** [View Tariff PDF]({source})")
+    
+    source_parent = tariff_viewer.tariff.get('sourceparent', None)
+    if source_parent:
+        st.markdown(f"**🌐 Utility Tariff Page:** [View All Tariffs]({source_parent})")
+    
+    uri = tariff_viewer.tariff.get('uri', None)
+    if uri:
+        st.markdown(f"**🔗 OpenEI Database Entry:** [View on OpenEI]({uri})")
+    
+    supersedes = tariff_viewer.tariff.get('supersedes', None)
+    if supersedes:
+        st.info(f"**Supersedes:** Previous tariff version ID: `{supersedes}`")
+    
+    # Important Notes
+    st.markdown(create_section_header_html("📌 Important Notes"), unsafe_allow_html=True)
+    
+    energy_comments = tariff_viewer.tariff.get('energycomments', None)
+    if energy_comments:
+        with st.expander("⚡ Energy Rate Comments", expanded=True):
+            st.markdown(energy_comments)
+    
+    demand_comments = tariff_viewer.tariff.get('demandcomments', None)
+    if demand_comments:
+        with st.expander("🔌 Demand Rate Comments", expanded=True):
+            st.markdown(demand_comments)
+    
+    dg_rules = tariff_viewer.tariff.get('dgrules', None)
+    if dg_rules:
+        st.success(f"**🔋 Distributed Generation Rules:** {dg_rules}")
+    
+    # Additional Details
+    demand_units = tariff_viewer.tariff.get('demandunits', None)
+    flat_demand_unit = tariff_viewer.tariff.get('flatdemandunit', None)
+    demand_rate_unit = tariff_viewer.tariff.get('demandrateunit', None)
+    reactive_power_charge = tariff_viewer.tariff.get('demandreactivepowercharge', None)
+    
+    if any([demand_units, flat_demand_unit, demand_rate_unit, reactive_power_charge]):
+        with st.expander("⚙️ Additional Technical Details"):
+            if demand_units:
+                st.write(f"**Demand Units:** {demand_units}")
+            if flat_demand_unit:
+                st.write(f"**Flat Demand Unit:** {flat_demand_unit}")
+            if demand_rate_unit:
+                st.write(f"**Demand Rate Unit:** {demand_rate_unit}")
+            if reactive_power_charge:
+                st.write(f"**Reactive Power Charge:** ${reactive_power_charge:.2f}/kVAR")
+    
     # Raw JSON data viewer
+    st.markdown(create_custom_divider_html(), unsafe_allow_html=True)
     with st.expander("🔍 View Raw JSON Data"):
         st.json(tariff_viewer.data)
 
@@ -240,44 +393,58 @@ def main() -> None:
         st.error("❌ Failed to load tariff data.")
         st.stop()
     
-    # Render tariff info chips (matches original layout)
-    render_tariff_info_chips(tariff_viewer)
-    
     # Create main tabs
-    tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
-        "⚡ Energy Rates", 
-        "🔌 Demand Rates", 
-        "📊 Flat Demand", 
+    tab1, tab2, tab3, tab4, tab5 = st.tabs([
+        "📋 Tariff Information",
         "💰 Utility Cost Analysis", 
         "🔧 Load Profile Generator", 
         "📊 LP Analysis",
         "🏗️ Tariff Builder"
     ])
     
-    # Render each tab
+    # Tariff Information tab with sub-tabs
     with tab1:
-        render_energy_rates_tab(tariff_viewer, sidebar_options)
+        subtab1, subtab2, subtab3, subtab4 = st.tabs([
+            "⚡ Energy Rates",
+            "🔌 Demand Rates",
+            "📊 Flat Demand",
+            "📄 Basic Info"
+        ])
+        
+        with subtab1:
+            render_energy_rates_tab(tariff_viewer, sidebar_options)
+        
+        with subtab2:
+            render_demand_rates_tab(tariff_viewer, sidebar_options)
+        
+        with subtab3:
+            render_flat_demand_rates_tab(tariff_viewer, sidebar_options)
+        
+        with subtab4:
+            render_tariff_information_section(tariff_viewer)
     
+    # Utility Cost Analysis tab with sub-tabs
     with tab2:
-        render_demand_rates_tab(tariff_viewer, sidebar_options)
+        cost_subtab1, cost_subtab2 = st.tabs([
+            "Utilization Analysis",
+            "Utility Bill Calculator"
+        ])
+        
+        with cost_subtab1:
+            render_load_factor_analysis_tab(tariff_viewer, sidebar_options)
+        
+        with cost_subtab2:
+            render_utility_cost_calculation_tab(tariff_viewer, selected_load_profile, sidebar_options)
     
+    # Other main tabs
     with tab3:
-        render_flat_demand_rates_tab(tariff_viewer, sidebar_options)
-    
-    with tab4:
-        render_cost_calculator_tab(tariff_viewer, selected_load_profile, sidebar_options)
-    
-    with tab5:
         render_load_generator_tab(tariff_viewer, sidebar_options)
     
-    with tab6:
+    with tab4:
         render_load_profile_analysis_tab(selected_load_profile, sidebar_options)
     
-    with tab7:
+    with tab5:
         render_tariff_builder_tab()
-    
-    # Render tariff information section at the bottom
-    render_tariff_information_section(tariff_viewer)
 
 
 if __name__ == "__main__":

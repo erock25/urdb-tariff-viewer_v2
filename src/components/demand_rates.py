@@ -24,8 +24,6 @@ def render_demand_rates_tab(tariff_viewer: TariffViewer, options: Dict[str, Any]
         tariff_viewer (TariffViewer): TariffViewer instance
         options (Dict[str, Any]): Display and analysis options
     """
-    st.markdown("### 🔌 Demand Charge Rate Structure")
-    
     # Use the same modified tariff logic as energy rates
     if st.session_state.get('modified_tariff'):
         # Extract tariff data from modified structure
@@ -37,7 +35,7 @@ def render_demand_rates_tab(tariff_viewer: TariffViewer, options: Dict[str, Any]
         current_demand_tariff = tariff_viewer.tariff
 
     # Show current demand rate table first
-    st.markdown("#### 📊 Current Demand Rate Table")
+    st.markdown("#### Time of Use Demand Rates Table")
     
     try:
         demand_table = tariff_viewer.create_demand_labels_table()

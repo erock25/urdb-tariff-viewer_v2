@@ -55,6 +55,27 @@ def get_custom_css() -> str:
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     header {visibility: hidden;}
+    
+    /* Minimize top padding */
+    .main .block-container {
+        padding-top: 0rem !important;
+        padding-bottom: 1rem !important;
+        max-width: 100% !important;
+    }
+    
+    /* Remove extra spacing from top */
+    section.main > div {
+        padding-top: 0 !important;
+    }
+    
+    /* Remove default Streamlit top spacing */
+    .appview-container .main .block-container {
+        padding-top: 0rem !important;
+    }
+    
+    [data-testid="stAppViewContainer"] {
+        padding-top: 0 !important;
+    }
 
     /* Main header styling */
     .main-header {
@@ -135,7 +156,7 @@ def get_custom_css() -> str:
     }
 
     .stSidebar > div {
-        padding-top: 2rem !important;
+        padding-top: 0.5rem !important;
     }
 
     .sidebar-header {
@@ -205,8 +226,14 @@ def get_custom_css() -> str:
         background-color: #f8fafc;
         padding: 6px;
         border-radius: 12px;
+        margin-top: 0 !important;
         margin-bottom: 2rem;
         border: 1px solid #cbd5e1;
+    }
+    
+    .stTabs {
+        margin-top: 0 !important;
+        padding-top: 0 !important;
     }
 
     .stTabs [data-baseweb="tab"] {
@@ -453,6 +480,27 @@ def get_dark_mode_css() -> str:
         background-color: #0f172a !important;
         color: #f1f5f9 !important;
     }
+    
+    /* Minimize top padding in dark mode */
+    .main .block-container {
+        padding-top: 0rem !important;
+        padding-bottom: 1rem !important;
+        max-width: 100% !important;
+    }
+    
+    /* Remove extra spacing from top */
+    section.main > div {
+        padding-top: 0 !important;
+    }
+    
+    /* Remove default Streamlit top spacing */
+    .appview-container .main .block-container {
+        padding-top: 0rem !important;
+    }
+    
+    [data-testid="stAppViewContainer"] {
+        padding-top: 0 !important;
+    }
 
     /* Dark mode metric styling */
     .metric-card, .stats-container {
@@ -473,6 +521,12 @@ def get_dark_mode_css() -> str:
     .stTabs [data-baseweb="tab-list"] {
         background: #1e293b !important;
         border-color: #334155 !important;
+        margin-top: 0 !important;
+    }
+    
+    .stTabs {
+        margin-top: 0 !important;
+        padding-top: 0 !important;
     }
 
     .stTabs [data-baseweb="tab"] {

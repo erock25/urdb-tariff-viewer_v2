@@ -20,7 +20,6 @@ def render_tariff_builder_tab() -> None:
     """
     Render the tariff builder tab for creating new tariffs from scratch.
     """
-    st.markdown(create_section_header_html("🔧 Tariff Builder"), unsafe_allow_html=True)
     st.markdown("""
     Create a new utility tariff from scratch. Fill in the required fields below and 
     optionally configure advanced rate structures. When finished, save your tariff 

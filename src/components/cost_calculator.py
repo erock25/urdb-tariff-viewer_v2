@@ -74,6 +74,64 @@ def render_cost_calculator_tab(
         _display_calculation_results(st.session_state.calculation_results, options)
 
 
+def render_load_factor_analysis_tab(tariff_viewer: TariffViewer, options: Dict[str, Any]) -> None:
+    """
+    Render the load factor analysis tool tab.
+    
+    Args:
+        tariff_viewer (TariffViewer): TariffViewer instance
+        options (Dict[str, Any]): Display and analysis options
+    """
+    _render_load_factor_analysis_tool(tariff_viewer, options)
+
+
+def render_utility_cost_calculation_tab(
+    tariff_viewer: TariffViewer, 
+    load_profile_path: Optional[Path], 
+    options: Dict[str, Any]
+) -> None:
+    """
+    Render the utility cost calculation tool tab.
+    
+    Args:
+        tariff_viewer (TariffViewer): TariffViewer instance
+        load_profile_path (Optional[Path]): Path to selected load profile
+        options (Dict[str, Any]): Display and analysis options
+    """
+    # Rest of the calculator (requires load profile)
+    if not load_profile_path:
+        _show_no_load_profile_message()
+        return
+    
+    # Load profile validation
+    st.markdown("#### 📋 Load Profile Validation")
+    
+    try:
+        validation_results = CalculationService.validate_load_profile(load_profile_path)
+        _display_validation_results(validation_results)
+        
+        if not validation_results['is_valid']:
+            st.error("❌ Cannot proceed with cost calculation due to validation errors.")
+            return
+            
+    except Exception as e:
+        st.error(f"❌ Error validating load profile: {str(e)}")
+        return
+    
+    st.markdown(create_custom_divider_html(), unsafe_allow_html=True)
+    
+    # Calculate button
+    if st.button("🧮 Calculate Utility Costs", type="primary", width="stretch"):
+        # Use default customer voltage from options
+        customer_voltage = options.get('customer_voltage', 480.0)
+        _perform_cost_calculation(tariff_viewer, load_profile_path, customer_voltage, options)
+    
+    # Show existing results if available
+    if 'calculation_results' in st.session_state:
+        st.markdown(create_custom_divider_html(), unsafe_allow_html=True)
+        _display_calculation_results(st.session_state.calculation_results, options)
+
+
 def _show_no_load_profile_message() -> None:
     """Show message when no load profile is selected."""
     st.info("ℹ️ **No Load Profile Selected**")
@@ -890,116 +948,115 @@ def _render_load_factor_analysis_tool(tariff_viewer: TariffViewer, options: Dict
         options (Dict[str, Any]): Display options
     """
     
-    with st.expander("🔍 Load Factor Rate Analysis Tool", expanded=True):
-        st.markdown("""
-        This tool calculates the **effective utility rate in $/kWh** for different load factors.
-        
-        **How it works:**
-        - Select single month or full year analysis
-        - Specify the maximum demand for each applicable demand period
-        - Specify the energy distribution across all energy rate periods
-        - View effective rates from 1% up to the maximum physically possible load factor (in 1% increments), plus 100%
-        
-        **Note:** The maximum physically possible load factor is determined by your energy distribution. 
-        For each period: LF ≤ (hour %) / (energy %). The tool uses the most restrictive constraint.
-        Example: if a period is 20% of hours but you allocate 40% of energy there, max LF = 50%.
-        """)
-        
-        tariff_data = tariff_viewer.tariff  # Use .tariff for actual tariff data
-        
-        # Analysis period selection
-        month_names = ['January', 'February', 'March', 'April', 'May', 'June',
-                      'July', 'August', 'September', 'October', 'November', 'December']
-        
-        analysis_period = st.radio(
-            "📅 Analysis Period",
-            options=["Single Month", "Full Year"],
-            horizontal=True,
-            help="Choose whether to analyze a single month or calculate annual effective rates"
+    st.markdown("""
+    This tool calculates the **effective utility rate in $/kWh** for different load factors.
+    
+    **How it works:**
+    - Select single month or full year analysis
+    - Specify the maximum demand for each applicable demand period
+    - Specify the energy distribution across all energy rate periods
+    - View effective rates from 1% up to the maximum physically possible load factor (in 1% increments), plus 100%
+    
+    **Note:** The maximum physically possible load factor is determined by your energy distribution. 
+    For each period: LF ≤ (hour %) / (energy %). The tool uses the most restrictive constraint.
+    Example: if a period is 20% of hours but you allocate 40% of energy there, max LF = 50%.
+    """)
+    
+    tariff_data = tariff_viewer.tariff  # Use .tariff for actual tariff data
+    
+    # Analysis period selection
+    month_names = ['January', 'February', 'March', 'April', 'May', 'June',
+                  'July', 'August', 'September', 'October', 'November', 'December']
+    
+    analysis_period = st.radio(
+        "📅 Analysis Period",
+        options=["Single Month", "Full Year"],
+        horizontal=True,
+        help="Choose whether to analyze a single month or calculate annual effective rates"
+    )
+    
+    # Month selection (only shown for single month analysis)
+    if analysis_period == "Single Month":
+        selected_month = st.selectbox(
+            "Select Month",
+            options=list(range(12)),
+            format_func=lambda x: month_names[x],
+            help="Select the month for which to calculate effective rates"
         )
+    else:
+        # For full year, we'll use all months, but need a reference month for UI purposes
+        selected_month = 0  # Reference month for determining which periods to show
+    
+    st.markdown("---")
+    
+    # Get demand rate structure
+    has_tou_demand = 'demandratestructure' in tariff_data and tariff_data.get('demandratestructure')
+    has_flat_demand = 'flatdemandstructure' in tariff_data and tariff_data.get('flatdemandstructure')
+    
+    demand_inputs = {}
+    
+    # Initialize period month count variables (will be populated based on tariff structure)
+    demand_period_month_counts = {}
+    energy_period_month_counts = {}
         
-        # Month selection (only shown for single month analysis)
+    # TOU Demand inputs
+    if has_tou_demand:
+        st.markdown("##### ⚡ TOU Demand Charges")
+        st.markdown("Specify the maximum demand (kW) for each TOU demand period:")
+        
+        # Get demand period labels if available
+        demand_labels = tariff_data.get('demandtoulabels', [])
+        num_demand_periods = len(tariff_data['demandratestructure'])
+        
+        # Get active demand periods based on analysis period
         if analysis_period == "Single Month":
-            selected_month = st.selectbox(
-                "Select Month",
-                options=list(range(12)),
-                format_func=lambda x: month_names[x],
-                help="Select the month for which to calculate effective rates"
-            )
+            active_demand_periods = _get_active_demand_periods_for_month(tariff_data, selected_month)
+            demand_period_month_counts = {p: 1 for p in active_demand_periods}
+            
+            # Show info about which periods are active
+            if len(active_demand_periods) < num_demand_periods:
+                inactive_periods = set(range(num_demand_periods)) - active_demand_periods
+                inactive_labels = [demand_labels[i] if i < len(demand_labels) else f"Period {i}" 
+                                 for i in sorted(inactive_periods)]
+                st.info(f"ℹ️ Only showing demand periods present in {month_names[selected_month]}. "
+                       f"The following demand periods are not scheduled this month: {', '.join(inactive_labels)}")
         else:
-            # For full year, we'll use all months, but need a reference month for UI purposes
-            selected_month = 0  # Reference month for determining which periods to show
-        
-        st.markdown("---")
-        
-        # Get demand rate structure
-        has_tou_demand = 'demandratestructure' in tariff_data and tariff_data.get('demandratestructure')
-        has_flat_demand = 'flatdemandstructure' in tariff_data and tariff_data.get('flatdemandstructure')
-        
-        demand_inputs = {}
-        
-        # Initialize period month count variables (will be populated based on tariff structure)
-        demand_period_month_counts = {}
-        energy_period_month_counts = {}
-        
-        # TOU Demand inputs
-        if has_tou_demand:
-            st.markdown("##### ⚡ TOU Demand Charges")
-            st.markdown("Specify the maximum demand (kW) for each TOU demand period:")
+            # Full year - get all periods active in any month
+            demand_period_month_counts = _get_active_demand_periods_for_year(tariff_data)
+            active_demand_periods = set(demand_period_month_counts.keys())
             
-            # Get demand period labels if available
-            demand_labels = tariff_data.get('demandtoulabels', [])
-            num_demand_periods = len(tariff_data['demandratestructure'])
-            
-            # Get active demand periods based on analysis period
-            if analysis_period == "Single Month":
-                active_demand_periods = _get_active_demand_periods_for_month(tariff_data, selected_month)
-                demand_period_month_counts = {p: 1 for p in active_demand_periods}
+            if len(active_demand_periods) < num_demand_periods:
+                st.info(f"ℹ️ Showing all demand periods active during the year.")
+        
+        # Only show active periods
+        active_demand_periods_list = sorted(list(active_demand_periods))
+        
+        if not active_demand_periods_list:
+            st.warning("⚠️ No demand periods found in the schedule. Please check the tariff data.")
+        else:
+            cols = st.columns(min(len(active_demand_periods_list), 3))
+            for idx, i in enumerate(active_demand_periods_list):
+                label = demand_labels[i] if i < len(demand_labels) else f"Demand Period {i}"
+                rate = tariff_data['demandratestructure'][i][0].get('rate', 0)
+                adj = tariff_data['demandratestructure'][i][0].get('adj', 0)
+                total_rate = rate + adj
                 
-                # Show info about which periods are active
-                if len(active_demand_periods) < num_demand_periods:
-                    inactive_periods = set(range(num_demand_periods)) - active_demand_periods
-                    inactive_labels = [demand_labels[i] if i < len(demand_labels) else f"Period {i}" 
-                                     for i in sorted(inactive_periods)]
-                    st.info(f"ℹ️ Only showing demand periods present in {month_names[selected_month]}. "
-                           f"The following demand periods are not scheduled this month: {', '.join(inactive_labels)}")
-            else:
-                # Full year - get all periods active in any month
-                demand_period_month_counts = _get_active_demand_periods_for_year(tariff_data)
-                active_demand_periods = set(demand_period_month_counts.keys())
+                # Show month count for annual analysis
+                month_info = ""
+                if analysis_period == "Full Year":
+                    month_count = demand_period_month_counts.get(i, 0)
+                    month_info = f"\n({month_count} months)"
                 
-                if len(active_demand_periods) < num_demand_periods:
-                    st.info(f"ℹ️ Showing all demand periods active during the year.")
-            
-            # Only show active periods
-            active_demand_periods_list = sorted(list(active_demand_periods))
-            
-            if not active_demand_periods_list:
-                st.warning("⚠️ No demand periods found in the schedule. Please check the tariff data.")
-            else:
-                cols = st.columns(min(len(active_demand_periods_list), 3))
-                for idx, i in enumerate(active_demand_periods_list):
-                    label = demand_labels[i] if i < len(demand_labels) else f"Demand Period {i}"
-                    rate = tariff_data['demandratestructure'][i][0].get('rate', 0)
-                    adj = tariff_data['demandratestructure'][i][0].get('adj', 0)
-                    total_rate = rate + adj
-                    
-                    # Show month count for annual analysis
-                    month_info = ""
-                    if analysis_period == "Full Year":
-                        month_count = demand_period_month_counts.get(i, 0)
-                        month_info = f"\n({month_count} months)"
-                    
-                    with cols[idx % min(len(active_demand_periods_list), 3)]:
-                        demand_inputs[f'tou_demand_{i}'] = st.number_input(
-                            f"{label}{month_info}\n(${total_rate:.2f}/kW)",
-                            min_value=0.0,
-                            value=0.0,
-                            step=1.0,
-                            key=f"lf_tou_demand_{i}_{analysis_period}",
-                            help=f"Base rate: ${rate:.2f}/kW" + (f" + Adjustment: ${adj:.2f}/kW" if adj != 0 else "") +
-                                 (f"\n\nActive in {month_count} months" if analysis_period == "Full Year" else "")
-                        )
+                with cols[idx % min(len(active_demand_periods_list), 3)]:
+                    demand_inputs[f'tou_demand_{i}'] = st.number_input(
+                        f"{label}{month_info}\n(${total_rate:.2f}/kW)",
+                        min_value=0.0,
+                        value=0.0,
+                        step=1.0,
+                        key=f"lf_tou_demand_{i}_{analysis_period}",
+                        help=f"Base rate: ${rate:.2f}/kW" + (f" + Adjustment: ${adj:.2f}/kW" if adj != 0 else "") +
+                             (f"\n\nActive in {month_count} months" if analysis_period == "Full Year" else "")
+                    )
         
         # Flat demand input
         if has_flat_demand:

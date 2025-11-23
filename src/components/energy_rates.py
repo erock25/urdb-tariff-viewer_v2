@@ -24,11 +24,8 @@ def render_energy_rates_tab(tariff_viewer: TariffViewer, options: Dict[str, Any]
         tariff_viewer (TariffViewer): TariffViewer instance
         options (Dict[str, Any]): Display and analysis options
     """
-    # Match original structure exactly
-    st.markdown("### ⚡ Energy Rate Structure")
-    
     # Show current table (read-only) first - matching original
-    st.markdown("#### 📊 Current Rate Table")
+    st.markdown("#### Current Rate Table")
     
     try:
         tou_table = tariff_viewer.create_tou_labels_table()
