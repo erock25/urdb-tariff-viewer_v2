@@ -2,6 +2,7 @@
 Main entry point for URDB Tariff Viewer.
 
 This is the new modular main application file that replaces the monolithic app.py.
+Updated: 2025-11-23
 """
 
 import streamlit as st
