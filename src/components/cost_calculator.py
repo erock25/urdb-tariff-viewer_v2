@@ -1079,101 +1079,101 @@ def _render_load_factor_analysis_tool(tariff_viewer: TariffViewer, options: Dict
                         help=f"Base rate: ${rate:.2f}/kW" + (f" + Adjustment: ${adj:.2f}/kW" if adj != 0 else "") +
                              (f"\n\nActive in {month_count} months" if analysis_period == "Full Year" else "")
                     )
+    
+    # Flat demand input
+    if has_flat_demand:
+        st.markdown("##### 📊 Flat Monthly Demand Charge")
         
-        # Flat demand input
-        if has_flat_demand:
-            st.markdown("##### 📊 Flat Monthly Demand Charge")
+        flatdemandmonths = tariff_data.get('flatdemandmonths', [0]*12)
+        flat_structure = tariff_data['flatdemandstructure']
+        
+        if analysis_period == "Single Month":
+            # Single month - show one input
+            flat_tier = flatdemandmonths[selected_month] if selected_month < len(flatdemandmonths) else 0
             
-            flatdemandmonths = tariff_data.get('flatdemandmonths', [0]*12)
-            flat_structure = tariff_data['flatdemandstructure']
+            # Get rate structure for this tier
+            if flat_tier < len(flat_structure):
+                flat_rate = flat_structure[flat_tier][0].get('rate', 0)
+                flat_adj = flat_structure[flat_tier][0].get('adj', 0)
+            else:
+                flat_rate = flat_structure[0][0].get('rate', 0)
+                flat_adj = flat_structure[0][0].get('adj', 0)
             
-            if analysis_period == "Single Month":
-                # Single month - show one input
-                flat_tier = flatdemandmonths[selected_month] if selected_month < len(flatdemandmonths) else 0
-                
-                # Get rate structure for this tier
-                if flat_tier < len(flat_structure):
-                    flat_rate = flat_structure[flat_tier][0].get('rate', 0)
-                    flat_adj = flat_structure[flat_tier][0].get('adj', 0)
-                else:
-                    flat_rate = flat_structure[0][0].get('rate', 0)
-                    flat_adj = flat_structure[0][0].get('adj', 0)
-                
-                total_flat_rate = flat_rate + flat_adj
-                
-                # Build help text
-                help_text = f"Base rate: ${flat_rate:.2f}/kW" + (f" + Adjustment: ${flat_adj:.2f}/kW" if flat_adj != 0 else "")
-                if len(flat_structure) > 1:
-                    help_text += f"\n\n(Rate for {month_names[selected_month]} - tier {flat_tier})"
-                if has_tou_demand:
-                    help_text += "\n\nNote: If entered value is less than highest TOU demand, it will be auto-adjusted upward"
-                
-                flat_demand_value = st.number_input(
-                    f"Maximum Monthly Demand (${total_flat_rate:.2f}/kW)",
-                    min_value=0.0,
-                    value=0.0,
-                    step=1.0,
-                    key="lf_flat_demand",
-                    help=help_text
-                )
-                
-                # Auto-adjust flat demand to be at least max TOU demand
-                if has_tou_demand:
-                    tou_demands = [v for k, v in demand_inputs.items() if k.startswith('tou_demand_') and isinstance(v, (int, float)) and v > 0]
-                    if tou_demands:
-                        max_tou_demand = max(tou_demands)
-                        if flat_demand_value == 0:
-                            st.info(f"ℹ️ Note: Flat demand automatically set to {max_tou_demand:.1f} kW to match the highest TOU demand.")
-                            demand_inputs['flat_demand'] = max_tou_demand
-                        elif flat_demand_value < max_tou_demand:
-                            st.info(f"ℹ️ Note: Flat demand ({flat_demand_value:.1f} kW) is less than highest TOU demand ({max_tou_demand:.1f} kW). Using {max_tou_demand:.1f} kW for calculations.")
-                            demand_inputs['flat_demand'] = max_tou_demand
-                        else:
-                            demand_inputs['flat_demand'] = flat_demand_value
+            total_flat_rate = flat_rate + flat_adj
+            
+            # Build help text
+            help_text = f"Base rate: ${flat_rate:.2f}/kW" + (f" + Adjustment: ${flat_adj:.2f}/kW" if flat_adj != 0 else "")
+            if len(flat_structure) > 1:
+                help_text += f"\n\n(Rate for {month_names[selected_month]} - tier {flat_tier})"
+            if has_tou_demand:
+                help_text += "\n\nNote: If entered value is less than highest TOU demand, it will be auto-adjusted upward"
+            
+            flat_demand_value = st.number_input(
+                f"Maximum Monthly Demand (${total_flat_rate:.2f}/kW)",
+                min_value=0.0,
+                value=0.0,
+                step=1.0,
+                key="lf_flat_demand",
+                help=help_text
+            )
+            
+            # Auto-adjust flat demand to be at least max TOU demand
+            if has_tou_demand:
+                tou_demands = [v for k, v in demand_inputs.items() if k.startswith('tou_demand_') and isinstance(v, (int, float)) and v > 0]
+                if tou_demands:
+                    max_tou_demand = max(tou_demands)
+                    if flat_demand_value == 0:
+                        st.info(f"ℹ️ Note: Flat demand automatically set to {max_tou_demand:.1f} kW to match the highest TOU demand.")
+                        demand_inputs['flat_demand'] = max_tou_demand
+                    elif flat_demand_value < max_tou_demand:
+                        st.info(f"ℹ️ Note: Flat demand ({flat_demand_value:.1f} kW) is less than highest TOU demand ({max_tou_demand:.1f} kW). Using {max_tou_demand:.1f} kW for calculations.")
+                        demand_inputs['flat_demand'] = max_tou_demand
                     else:
                         demand_inputs['flat_demand'] = flat_demand_value
                 else:
                     demand_inputs['flat_demand'] = flat_demand_value
             else:
-                # Full year - count how many months each tier applies
-                tier_month_counts = {}
-                for month_tier in flatdemandmonths:
-                    tier_month_counts[month_tier] = tier_month_counts.get(month_tier, 0) + 1
-                
-                # Show info about tier distribution
-                if len(tier_month_counts) > 1:
-                    st.info(f"ℹ️ This tariff has {len(tier_month_counts)} different flat demand rate tiers across the year. Enter the same demand value for all tiers (will be applied to appropriate months).")
-                
-                # Single input for flat demand (applies to all tiers)
-                flat_demand_value = st.number_input(
-                    f"Maximum Monthly Demand (kW)",
-                    min_value=0.0,
-                    value=0.0,
-                    step=1.0,
-                    key="lf_flat_demand_annual",
-                    help="This demand value will be applied to all months, but charged at the appropriate rate for each month"
-                )
-                
-                # Auto-adjust flat demand to be at least max TOU demand
-                if has_tou_demand:
-                    tou_demands = [v for k, v in demand_inputs.items() if k.startswith('tou_demand_') and isinstance(v, (int, float)) and v > 0]
-                    if tou_demands:
-                        max_tou_demand = max(tou_demands)
-                        if flat_demand_value == 0:
-                            st.info(f"ℹ️ Note: Flat demand automatically set to {max_tou_demand:.1f} kW to match the highest TOU demand.")
-                            demand_inputs['flat_demand'] = max_tou_demand
-                        elif flat_demand_value < max_tou_demand:
-                            st.info(f"ℹ️ Note: Flat demand ({flat_demand_value:.1f} kW) is less than highest TOU demand ({max_tou_demand:.1f} kW). Using {max_tou_demand:.1f} kW for calculations.")
-                            demand_inputs['flat_demand'] = max_tou_demand
-                        else:
-                            demand_inputs['flat_demand'] = flat_demand_value
+                demand_inputs['flat_demand'] = flat_demand_value
+        else:
+            # Full year - count how many months each tier applies
+            tier_month_counts = {}
+            for month_tier in flatdemandmonths:
+                tier_month_counts[month_tier] = tier_month_counts.get(month_tier, 0) + 1
+            
+            # Show info about tier distribution
+            if len(tier_month_counts) > 1:
+                st.info(f"ℹ️ This tariff has {len(tier_month_counts)} different flat demand rate tiers across the year. Enter the same demand value for all tiers (will be applied to appropriate months).")
+            
+            # Single input for flat demand (applies to all tiers)
+            flat_demand_value = st.number_input(
+                f"Maximum Monthly Demand (kW)",
+                min_value=0.0,
+                value=0.0,
+                step=1.0,
+                key="lf_flat_demand_annual",
+                help="This demand value will be applied to all months, but charged at the appropriate rate for each month"
+            )
+            
+            # Auto-adjust flat demand to be at least max TOU demand
+            if has_tou_demand:
+                tou_demands = [v for k, v in demand_inputs.items() if k.startswith('tou_demand_') and isinstance(v, (int, float)) and v > 0]
+                if tou_demands:
+                    max_tou_demand = max(tou_demands)
+                    if flat_demand_value == 0:
+                        st.info(f"ℹ️ Note: Flat demand automatically set to {max_tou_demand:.1f} kW to match the highest TOU demand.")
+                        demand_inputs['flat_demand'] = max_tou_demand
+                    elif flat_demand_value < max_tou_demand:
+                        st.info(f"ℹ️ Note: Flat demand ({flat_demand_value:.1f} kW) is less than highest TOU demand ({max_tou_demand:.1f} kW). Using {max_tou_demand:.1f} kW for calculations.")
+                        demand_inputs['flat_demand'] = max_tou_demand
                     else:
                         demand_inputs['flat_demand'] = flat_demand_value
                 else:
                     demand_inputs['flat_demand'] = flat_demand_value
-                
-                # Store tier information for later use in calculations
-                demand_inputs['_flat_tier_month_counts'] = tier_month_counts
+            else:
+                demand_inputs['flat_demand'] = flat_demand_value
+            
+            # Store tier information for later use in calculations
+            demand_inputs['_flat_tier_month_counts'] = tier_month_counts
         
         st.markdown("---")
         
@@ -1263,95 +1263,100 @@ def _render_load_factor_analysis_tool(tariff_viewer: TariffViewer, options: Dict
                         help=help_text
                     )
                     total_percentage += energy_percentages[i]
-        
-        # Show percentage total
-        percentage_color = "green" if abs(total_percentage - 100.0) < 0.01 else "red"
-        st.markdown(f"**Total: <span style='color:{percentage_color}'>{total_percentage:.1f}%</span>**", unsafe_allow_html=True)
-        
-        if abs(total_percentage - 100.0) >= 0.01:
-            st.warning("⚠️ Energy percentages must sum to 100%")
+            
+            # Show percentage total
+            percentage_color = "green" if abs(total_percentage - 100.0) < 0.01 else "red"
+            st.markdown(f"**Total: <span style='color:{percentage_color}'>{total_percentage:.1f}%</span>**", unsafe_allow_html=True)
+            
+            if abs(total_percentage - 100.0) >= 0.01:
+                st.warning("⚠️ Energy percentages must sum to 100%")
         
         st.markdown("---")
         
-        # Calculate button
-        if st.button("🧮 Calculate Effective Rates", type="primary", key="calc_load_factor"):
-            # Validation checks
-            validation_passed = True
-            
-            # Check energy percentages sum to 100%
-            if abs(total_percentage - 100.0) >= 0.01:
-                st.error("❌ Energy percentages must sum to 100% before calculating")
-                validation_passed = False
-            
-            # Proceed with calculation if validation passed
-            if validation_passed:
-                # Calculate max valid LF to inform the user (use already calculated period_hour_percentages)
-                max_valid_lf_for_msg = 1.0
-                for period_idx, energy_pct in energy_percentages.items():
-                    if energy_pct > 0 and period_idx in period_hour_percentages:
-                        hour_pct = period_hour_percentages[period_idx]
-                        if hour_pct > 0:
-                            period_max_lf = hour_pct / energy_pct
-                            max_valid_lf_for_msg = min(max_valid_lf_for_msg, period_max_lf)
-                        else:
-                            max_valid_lf_for_msg = 0.0
-                max_valid_lf_for_msg = min(max_valid_lf_for_msg, 1.0)
+        # Only show calculate button if we have valid inputs
+        if active_periods_list and (has_tou_demand or has_flat_demand):
+            # Calculate button
+            if st.button("🧮 Calculate Effective Rates", type="primary", key="calc_load_factor"):
+                # Validation checks
+                validation_passed = True
                 
-                # Show info about load factor range
-                num_points = int(max_valid_lf_for_msg * 100)
-                time_context = "month" if analysis_period == "Single Month" else "year"
-                if max_valid_lf_for_msg < 1.0:
-                    st.info(f"ℹ️ Maximum physically possible load factor: **{max_valid_lf_for_msg*100:.1f}%** (based on your energy distribution). "
-                           f"Calculations from 1% to {max_valid_lf_for_msg*100:.1f}% LF use your specified energy distribution ({num_points} data points). "
-                           f"Additionally, 100% LF is calculated using hour percentages (constant 24/7 operation at full power).")
-                else:
-                    st.info(f"ℹ️ Your energy distribution allows calculations up to 100% load factor ({num_points} data points). "
-                           f"At 100% LF, energy distribution matches hour percentages (constant 24/7 operation).")
+                # Check energy percentages sum to 100%
+                if abs(total_percentage - 100.0) >= 0.01:
+                    st.error("❌ Energy percentages must sum to 100% before calculating")
+                    validation_passed = False
                 
-                if analysis_period == "Single Month":
-                    results = _calculate_load_factor_rates(
-                        tariff_data=tariff_data,
-                        demand_inputs=demand_inputs,
-                        energy_percentages=energy_percentages,
-                        selected_month=selected_month,
-                        has_tou_demand=has_tou_demand,
-                        has_flat_demand=has_flat_demand
-                    )
-                    _display_load_factor_results(
-                        results, 
-                        options, 
-                        tariff_data=tariff_data,
-                        demand_inputs=demand_inputs,
-                        energy_percentages=energy_percentages,
-                        selected_month=selected_month,
-                        has_tou_demand=has_tou_demand,
-                        has_flat_demand=has_flat_demand,
-                        analysis_period=analysis_period
-                    )
-                else:
-                    # Full year analysis
-                    results = _calculate_annual_load_factor_rates(
-                        tariff_data=tariff_data,
-                        demand_inputs=demand_inputs,
-                        energy_percentages=energy_percentages,
-                        has_tou_demand=has_tou_demand,
-                        has_flat_demand=has_flat_demand,
-                        demand_period_month_counts=demand_period_month_counts,
-                        energy_period_month_counts=energy_period_month_counts
-                    )
-                    _display_load_factor_results(
-                        results, 
-                        options, 
-                        tariff_data=tariff_data,
-                        demand_inputs=demand_inputs,
-                        energy_percentages=energy_percentages,
-                        selected_month=None,  # Not applicable for annual
-                        has_tou_demand=has_tou_demand,
-                        has_flat_demand=has_flat_demand,
-                        analysis_period=analysis_period,
-                        demand_period_month_counts=demand_period_month_counts,
-                        energy_period_month_counts=energy_period_month_counts
-                    )
+                # Proceed with calculation if validation passed
+                if validation_passed:
+                    # Calculate max valid LF to inform the user (use already calculated period_hour_percentages)
+                    max_valid_lf_for_msg = 1.0
+                    for period_idx, energy_pct in energy_percentages.items():
+                        if energy_pct > 0 and period_idx in period_hour_percentages:
+                            hour_pct = period_hour_percentages[period_idx]
+                            if hour_pct > 0:
+                                period_max_lf = hour_pct / energy_pct
+                                max_valid_lf_for_msg = min(max_valid_lf_for_msg, period_max_lf)
+                            else:
+                                max_valid_lf_for_msg = 0.0
+                    max_valid_lf_for_msg = min(max_valid_lf_for_msg, 1.0)
+                    
+                    # Show info about load factor range
+                    num_points = int(max_valid_lf_for_msg * 100)
+                    time_context = "month" if analysis_period == "Single Month" else "year"
+                    if max_valid_lf_for_msg < 1.0:
+                        st.info(f"ℹ️ Maximum physically possible load factor: **{max_valid_lf_for_msg*100:.1f}%** (based on your energy distribution). "
+                               f"Calculations from 1% to {max_valid_lf_for_msg*100:.1f}% LF use your specified energy distribution ({num_points} data points). "
+                               f"Additionally, 100% LF is calculated using hour percentages (constant 24/7 operation at full power).")
+                    else:
+                        st.info(f"ℹ️ Your energy distribution allows calculations up to 100% load factor ({num_points} data points). "
+                               f"At 100% LF, energy distribution matches hour percentages (constant 24/7 operation).")
+                    
+                    if analysis_period == "Single Month":
+                        results = _calculate_load_factor_rates(
+                            tariff_data=tariff_data,
+                            demand_inputs=demand_inputs,
+                            energy_percentages=energy_percentages,
+                            selected_month=selected_month,
+                            has_tou_demand=has_tou_demand,
+                            has_flat_demand=has_flat_demand
+                        )
+                        _display_load_factor_results(
+                            results, 
+                            options, 
+                            tariff_data=tariff_data,
+                            demand_inputs=demand_inputs,
+                            energy_percentages=energy_percentages,
+                            selected_month=selected_month,
+                            has_tou_demand=has_tou_demand,
+                            has_flat_demand=has_flat_demand,
+                            analysis_period=analysis_period
+                        )
+                    else:
+                        # Full year analysis
+                        results = _calculate_annual_load_factor_rates(
+                            tariff_data=tariff_data,
+                            demand_inputs=demand_inputs,
+                            energy_percentages=energy_percentages,
+                            has_tou_demand=has_tou_demand,
+                            has_flat_demand=has_flat_demand,
+                            demand_period_month_counts=demand_period_month_counts,
+                            energy_period_month_counts=energy_period_month_counts
+                        )
+                        _display_load_factor_results(
+                            results, 
+                            options, 
+                            tariff_data=tariff_data,
+                            demand_inputs=demand_inputs,
+                            energy_percentages=energy_percentages,
+                            selected_month=None,  # Not applicable for annual
+                            has_tou_demand=has_tou_demand,
+                            has_flat_demand=has_flat_demand,
+                            analysis_period=analysis_period,
+                            demand_period_month_counts=demand_period_month_counts,
+                            energy_period_month_counts=energy_period_month_counts
+                        )
+        else:
+            # No valid inputs - show informative message
+            st.info("ℹ️ This tariff does not have the required rate structure data for utilization analysis. Please select a different tariff or check the tariff configuration.")
 
 
 def _calculate_load_factor_rates(
