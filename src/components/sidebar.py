@@ -6,10 +6,9 @@ This module contains the sidebar UI components and logic.
 
 import streamlit as st
 from pathlib import Path
-from typing import Dict, List, Optional, Union, Any, Tuple
+from typing import Dict, Optional, Any, Tuple
 
 from src.services.file_service import FileService
-from src.utils.styling import create_sidebar_header_html
 from src.config.settings import Settings
 from src.models.tariff import TariffViewer
 

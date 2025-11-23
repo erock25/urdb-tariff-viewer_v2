@@ -8,7 +8,7 @@ import streamlit as st
 import json
 import pandas as pd
 from pathlib import Path
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any
 from datetime import datetime
 
 from src.config.settings import Settings

@@ -6,11 +6,14 @@ This module contains the UI components for the demand rates analysis tab.
 
 import streamlit as st
 import pandas as pd
-from typing import Dict, Any, Optional
+from typing import Dict, Any
+from datetime import datetime
+from io import BytesIO
 
 from src.models.tariff import TariffViewer
 from src.components.visualizations import create_heatmap
 from src.utils.styling import create_custom_divider_html
+from src.utils.helpers import clean_filename
 
 
 def render_demand_rates_tab(tariff_viewer: TariffViewer, options: Dict[str, Any]) -> None:
@@ -36,47 +39,13 @@ def render_demand_rates_tab(tariff_viewer: TariffViewer, options: Dict[str, Any]
     # Show current demand rate table first
     st.markdown("#### 📊 Current Demand Rate Table")
     
-    demand_labels = current_demand_tariff.get('demandlabels', [])
-    demand_rates = current_demand_tariff.get('demandratestructure', [])
-    
-    # Create table data for display
-    demand_table_data = []
-    demand_weekday_schedule = current_demand_tariff.get('demandweekdayschedule', [])
-    demand_weekend_schedule = current_demand_tariff.get('demandweekendschedule', [])
-    
-    current_demand_labels = current_demand_tariff.get('demandlabels', [])
-    current_demand_rates = current_demand_tariff.get('demandratestructure', [])
-    
-    if current_demand_rates:
-        # If we have labels, use them; otherwise create generic labels
-        if current_demand_labels:
-            labels_to_use = current_demand_labels
-        else:
-            labels_to_use = ["Demand Label Not In Tariff JSON"] * len(current_demand_rates)
+    try:
+        demand_table = tariff_viewer.create_demand_labels_table()
         
-        for i, label in enumerate(labels_to_use):
-            if i < len(current_demand_rates) and current_demand_rates[i]:
-                rate_info = current_demand_rates[i][0]  # Get first tier
-                rate = rate_info.get('rate', 0)
-                adj = rate_info.get('adj', 0)
-                total_rate = rate + adj
-                
-                # Determine which months this demand period appears in
-                months_present = tariff_viewer._get_months_for_demand_period(i, demand_weekday_schedule, demand_weekend_schedule)
-                
-                demand_table_data.append({
-                    'Demand Period': label,
-                    'Base Rate ($/kW)': f"${rate:.4f}",
-                    'Adjustment ($/kW)': f"${adj:.4f}",
-                    'Total Rate ($/kW)': f"${total_rate:.4f}",
-                    'Months Present': months_present
-                })
-        
-        if demand_table_data:
-            display_demand_df = pd.DataFrame(demand_table_data)
+        if not demand_table.empty:
             st.dataframe(
-                display_demand_df,
-                use_container_width=True,
+                demand_table,
+                width="stretch",
                 hide_index=True,
                 column_config={
                     "Demand Period": st.column_config.TextColumn(
@@ -95,19 +64,96 @@ def render_demand_rates_tab(tariff_viewer: TariffViewer, options: Dict[str, Any]
                         "Total Rate ($/kW)",
                         width="small",
                     ),
+                    "Hours/Year": st.column_config.NumberColumn(
+                        "Hours/Year",
+                        width="small",
+                        format="%d"
+                    ),
+                    "% of Year": st.column_config.TextColumn(
+                        "% of Year",
+                        width="small",
+                    ),
+                    "Days/Year": st.column_config.NumberColumn(
+                        "Days/Year",
+                        width="small",
+                        format="%d"
+                    ),
                     "Months Present": st.column_config.TextColumn(
                         "Months Present",
                         width="large",
                     )
                 }
             )
-    else:
-        st.info("📝 **Note:** No demand rate structure found in this tariff JSON.")
+            
+            # Download button for the demand rate table
+            col1, col2, col3 = st.columns([1, 2, 1])
+            with col1:
+                # Generate Excel file for download
+                # Create a copy with numeric values for Excel export
+                excel_table = demand_table.copy()
+                
+                # Convert formatted strings to numeric values
+                # Remove $ and convert to float for rate columns
+                for col in ['Base Rate ($/kW)', 'Adjustment ($/kW)', 'Total Rate ($/kW)']:
+                    if col in excel_table.columns:
+                        excel_table[col] = excel_table[col].str.replace('$', '').astype(float)
+                
+                # Remove % sign and convert to decimal for percentage column
+                if '% of Year' in excel_table.columns:
+                    excel_table['% of Year'] = excel_table['% of Year'].str.replace('%', '').astype(float) / 100
+                
+                buffer = BytesIO()
+                with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+                    excel_table.to_excel(writer, sheet_name='Demand Rate Table', index=False)
+                    
+                    # Get the worksheet to apply formatting
+                    worksheet = writer.sheets['Demand Rate Table']
+                    
+                    # Find column indices for formatting
+                    headers = list(excel_table.columns)
+                    rate_columns = ['Base Rate ($/kW)', 'Adjustment ($/kW)', 'Total Rate ($/kW)']
+                    
+                    # Apply formatting to columns
+                    from openpyxl.styles import numbers
+                    for col_idx, col_name in enumerate(headers, start=1):
+                        if col_name in rate_columns:
+                            for row_idx in range(2, len(excel_table) + 2):
+                                cell = worksheet.cell(row=row_idx, column=col_idx)
+                                cell.number_format = '_($* #,##0.00_);_($* (#,##0.00);_($* "-"??_);_(@_)'
+                        elif col_name == '% of Year':
+                            for row_idx in range(2, len(excel_table) + 2):
+                                cell = worksheet.cell(row=row_idx, column=col_idx)
+                                cell.number_format = '0.0%'
+                
+                excel_data = buffer.getvalue()
+                
+                # Create filename
+                utility_clean = clean_filename(tariff_viewer.utility_name)
+                rate_clean = clean_filename(tariff_viewer.rate_name)
+                timestamp = datetime.now().strftime("%Y%m%d")
+                filename = f"Demand_Rate_Table_{utility_clean}_{rate_clean}_{timestamp}.xlsx"
+                
+                st.download_button(
+                    label="📥 Download Table",
+                    data=excel_data,
+                    file_name=filename,
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    help="Download the current demand rate table as an Excel file"
+                )
+        else:
+            st.info("📝 **Note:** No demand rate structure found in this tariff JSON.")
+            
+    except Exception as e:
+        st.error(f"❌ Error creating demand rate table: {str(e)}")
     
     st.markdown("---")
     
     # Demand Labels Table - Editable (moved above heatmaps to match original)
     st.markdown("#### 🏷️ Demand Period Labels & Rates (Editable)")
+    
+    # Get demand rates and labels for editing form
+    demand_rates = current_demand_tariff.get('demandratestructure', [])
+    demand_labels = current_demand_tariff.get('demandlabels', [])
     
     with st.expander("🔧 Edit Demand Rates", expanded=False):
         if demand_rates:

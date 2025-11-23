@@ -8,7 +8,7 @@ based on tariff structures and customer parameters.
 import pandas as pd
 import numpy as np
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Union, Any
+from typing import Dict, Any
 
 from src.config.constants import (
     DEFAULT_LOAD_FACTOR, DEFAULT_SEASONAL_VARIATION, DEFAULT_WEEKEND_FACTOR,

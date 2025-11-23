@@ -8,7 +8,6 @@ utility rate structures from URDB JSON files.
 import json
 import pandas as pd
 import numpy as np
-import plotly.graph_objects as go
 from pathlib import Path
 from typing import Dict, List, Optional, Union, Any
 import streamlit as st
@@ -210,10 +209,11 @@ class TariffViewer:
         weekday_schedule = self.tariff.get('energyweekdayschedule', [])
         weekend_schedule = self.tariff.get('energyweekendschedule', [])
 
-        # Calculate annual hours for each period
+        # Calculate annual hours and days for each period
         period_hours = {}
+        period_days = {}
         total_hours = 0
-        year = 2024  # Reference year for calendar calculations
+        year = 2025  # Reference year for calendar calculations (non-leap year for standard 8760 hours)
         
         if len(weekday_schedule) >= 12 and len(weekend_schedule) >= 12:
             for month in range(12):
@@ -242,6 +242,16 @@ class TariffViewer:
                     period = weekend_schedule[month][hour]
                     period_hours[period] = period_hours.get(period, 0) + weekend_count
                 
+                # Count days per period - check if period appears in this month's schedule
+                periods_in_weekday = set(weekday_schedule[month])
+                periods_in_weekend = set(weekend_schedule[month])
+                
+                for period in periods_in_weekday:
+                    period_days[period] = period_days.get(period, 0) + weekday_count
+                
+                for period in periods_in_weekend:
+                    period_days[period] = period_days.get(period, 0) + weekend_count
+                
                 total_hours += (weekday_count + weekend_count) * 24
 
         # Create table data
@@ -269,8 +279,9 @@ class TariffViewer:
                 # Determine which months this TOU period appears in
                 months_present = self._get_months_for_tou_period(i, weekday_schedule, weekend_schedule)
                 
-                # Get hours and percentage for this period
+                # Get hours, days, and percentage for this period
                 hours = period_hours.get(i, 0)
+                days = period_days.get(i, 0)
                 percentage = (hours / total_hours * 100) if total_hours > 0 else 0
 
                 table_data.append({
@@ -280,6 +291,7 @@ class TariffViewer:
                     'Total Rate ($/kWh)': f"${total_rate:.4f}",
                     'Hours/Year': hours,
                     '% of Year': f"{percentage:.1f}%",
+                    'Days/Year': days,
                     'Months Present': months_present
                 })
 
@@ -292,6 +304,8 @@ class TariffViewer:
         Returns:
             pd.DataFrame: Table with demand period information
         """
+        import calendar
+        
         demand_labels = self.tariff.get('demandlabels', None)
         demand_rates = self.tariff.get('demandratestructure', [])
 
@@ -302,6 +316,51 @@ class TariffViewer:
         # Get weekday and weekend schedules
         demand_weekday_schedule = self.tariff.get('demandweekdayschedule', [])
         demand_weekend_schedule = self.tariff.get('demandweekendschedule', [])
+
+        # Calculate annual hours and days for each period
+        period_hours = {}
+        period_days = {}
+        total_hours = 0
+        year = 2025  # Reference year for calendar calculations (non-leap year for standard 8760 hours)
+        
+        if len(demand_weekday_schedule) >= 12 and len(demand_weekend_schedule) >= 12:
+            for month in range(12):
+                # Get the calendar for this month
+                cal = calendar.monthcalendar(year, month + 1)
+                
+                # Count weekdays and weekend days
+                weekday_count = 0
+                weekend_count = 0
+                
+                for week in cal:
+                    for day_idx, day in enumerate(week):
+                        if day == 0:  # Not part of this month
+                            continue
+                        if day_idx < 5:  # Monday-Friday (0-4)
+                            weekday_count += 1
+                        else:  # Saturday-Sunday (5-6)
+                            weekend_count += 1
+                
+                # Count hours per period for this month
+                for hour in range(24):
+                    period = demand_weekday_schedule[month][hour]
+                    period_hours[period] = period_hours.get(period, 0) + weekday_count
+                
+                for hour in range(24):
+                    period = demand_weekend_schedule[month][hour]
+                    period_hours[period] = period_hours.get(period, 0) + weekend_count
+                
+                # Count days per period - check if period appears in this month's schedule
+                periods_in_weekday = set(demand_weekday_schedule[month])
+                periods_in_weekend = set(demand_weekend_schedule[month])
+                
+                for period in periods_in_weekday:
+                    period_days[period] = period_days.get(period, 0) + weekday_count
+                
+                for period in periods_in_weekend:
+                    period_days[period] = period_days.get(period, 0) + weekend_count
+                
+                total_hours += (weekday_count + weekend_count) * 24
 
         # Create table data
         table_data = []
@@ -327,12 +386,20 @@ class TariffViewer:
 
                 # Determine which months this demand period appears in
                 months_present = self._get_months_for_demand_period(i, demand_weekday_schedule, demand_weekend_schedule)
+                
+                # Get hours, days, and percentage for this period
+                hours = period_hours.get(i, 0)
+                days = period_days.get(i, 0)
+                percentage = (hours / total_hours * 100) if total_hours > 0 else 0
 
                 table_data.append({
                     'Demand Period': period_label,
                     'Base Rate ($/kW)': f"${rate:.4f}",
                     'Adjustment ($/kW)': f"${adj:.4f}",
                     'Total Rate ($/kW)': f"${total_rate:.4f}",
+                    'Hours/Year': hours,
+                    '% of Year': f"{percentage:.1f}%",
+                    'Days/Year': days,
                     'Months Present': months_present
                 })
 

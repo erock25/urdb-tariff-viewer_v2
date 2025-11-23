@@ -9,7 +9,7 @@ import plotly.express as px
 import pandas as pd
 import numpy as np
 import streamlit as st
-from typing import Dict, List, Optional, Union, Any
+from typing import Dict, Optional, Any
 
 from src.models.tariff import TariffViewer
 from src.config.constants import DEFAULT_COLORS, DEFAULT_CHART_HEIGHT, DEFAULT_FLAT_DEMAND_HEIGHT

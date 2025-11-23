@@ -8,7 +8,7 @@ import streamlit as st
 import pandas as pd
 import plotly.graph_objects as go
 import plotly.express as px
-from typing import Dict, Any, Optional, Union
+from typing import Dict, Any, Optional
 from pathlib import Path
 from io import BytesIO
 
@@ -1896,8 +1896,40 @@ def _display_load_factor_results(
     
     # Add download button for Detailed Results Table
     buffer = BytesIO()
+    
+    # Create a copy for Excel with load factor as percentage
+    excel_df = display_df.copy()
+    if 'Load Factor' in excel_df.columns:
+        # Convert load factor string to numeric percentage (e.g., "50%" -> 0.50)
+        excel_df['Load Factor'] = excel_df['Load Factor'].str.replace('%', '').astype(float) / 100
+    
     with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
-        display_df.to_excel(writer, sheet_name='Load Factor Analysis', index=False)
+        excel_df.to_excel(writer, sheet_name='Load Factor Analysis', index=False)
+        
+        # Get the worksheet to apply formatting
+        worksheet = writer.sheets['Load Factor Analysis']
+        
+        # Apply formatting to columns
+        from openpyxl.styles import numbers
+        headers = list(excel_df.columns)
+        
+        for col_idx, col_name in enumerate(headers, start=1):
+            for row_idx in range(2, len(excel_df) + 2):
+                cell = worksheet.cell(row=row_idx, column=col_idx)
+                
+                # Percentage format for Load Factor
+                if col_name == 'Load Factor':
+                    cell.number_format = '0%'
+                # Accounting format for currency columns (whole numbers)
+                elif col_name in ['Demand Charges ($)', 'Energy Charges ($)', 'Fixed Charges ($)', 'Total Cost ($)']:
+                    cell.number_format = '_($* #,##0_);_($* (#,##0);_($* "-"_);_(@_)'
+                elif col_name == 'Effective Rate ($/kWh)':
+                    cell.number_format = '_($* #,##0.0000_);_($* (#,##0.0000);_($* "-"????_);_(@_)'
+                elif col_name == 'Total Energy (kWh)':
+                    cell.number_format = '#,##0'
+                elif col_name == 'Average Load (kW)':
+                    cell.number_format = '#,##0'
+    
     buffer.seek(0)
     
     st.download_button(
@@ -2143,8 +2175,47 @@ def _display_load_factor_results(
         
         # Add download button for Comprehensive Breakdown Table
         buffer_comprehensive = BytesIO()
+        
+        # Create a copy for Excel with load factor as percentage
+        excel_comprehensive_df = comprehensive_df.copy()
+        if 'Load Factor' in excel_comprehensive_df.columns:
+            # Convert load factor string to numeric percentage (e.g., "50%" -> 0.50)
+            excel_comprehensive_df['Load Factor'] = excel_comprehensive_df['Load Factor'].str.replace('%', '').astype(float) / 100
+        
         with pd.ExcelWriter(buffer_comprehensive, engine='openpyxl') as writer:
-            comprehensive_df.to_excel(writer, sheet_name='Comprehensive Breakdown', index=False)
+            excel_comprehensive_df.to_excel(writer, sheet_name='Comprehensive Breakdown', index=False)
+            
+            # Get the worksheet to apply formatting
+            worksheet = writer.sheets['Comprehensive Breakdown']
+            
+            # Apply formatting to columns
+            from openpyxl.styles import numbers
+            headers = list(excel_comprehensive_df.columns)
+            
+            for col_idx, col_name in enumerate(headers, start=1):
+                for row_idx in range(2, len(excel_comprehensive_df) + 2):
+                    cell = worksheet.cell(row=row_idx, column=col_idx)
+                    
+                    # Apply appropriate formatting based on column name
+                    if col_name == 'Load Factor':
+                        # Percentage format for Load Factor
+                        cell.number_format = '0%'
+                    elif col_name.endswith('Rate ($/kW)') or '($/kW)' in col_name:
+                        # Accounting format with 2 decimal places for demand rates
+                        cell.number_format = '_($* #,##0.00_);_($* (#,##0.00);_($* "-"??_);_(@_)'
+                    elif col_name.endswith('Rate ($/kWh)') or col_name == 'Effective Rate ($/kWh)':
+                        # Accounting format with 4 decimal places for energy rates
+                        cell.number_format = '_($* #,##0.0000_);_($* (#,##0.0000);_($* "-"????_);_(@_)'
+                    elif col_name.endswith('Cost ($)') or col_name.endswith('Charges ($)') or col_name == 'Total Cost ($)':
+                        # Accounting format with no decimals for costs
+                        cell.number_format = '_($* #,##0_);_($* (#,##0);_($* "-"_);_(@_)'
+                    elif col_name.endswith('(kWh)') or col_name == 'Total Energy (kWh)':
+                        # Number format with commas for energy
+                        cell.number_format = '#,##0'
+                    elif col_name.endswith('(kW)') or col_name == 'Average Load (kW)':
+                        # Number format with no decimals for load
+                        cell.number_format = '#,##0'
+        
         buffer_comprehensive.seek(0)
         
         st.download_button(

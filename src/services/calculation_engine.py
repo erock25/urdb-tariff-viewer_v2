@@ -10,7 +10,7 @@ import json
 import os
 import re
 from datetime import datetime
-from typing import Dict, List, Optional, Union
+from typing import Dict, List
 
 from src.utils.exceptions import InvalidTariffError, InvalidLoadProfileError
 

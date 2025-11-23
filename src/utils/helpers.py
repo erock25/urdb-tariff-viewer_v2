@@ -294,6 +294,8 @@ def generate_energy_rates_excel(tariff_viewer, year: int = 2025) -> bytes:
     Returns:
         bytes: Excel file content as bytes
     """
+    from openpyxl.styles import numbers
+    
     # Create a bytes buffer to hold the Excel file
     output = io.BytesIO()
     
@@ -306,7 +308,28 @@ def generate_energy_rates_excel(tariff_viewer, year: int = 2025) -> bytes:
         try:
             tou_table = tariff_viewer.create_tou_labels_table()
             if not tou_table.empty:
-                tou_table.to_excel(writer, sheet_name='Energy Rate Table', index=False)
+                # Convert formatted strings to numeric for Excel
+                excel_tou = tou_table.copy()
+                for col in ['Base Rate ($/kWh)', 'Adjustment ($/kWh)', 'Total Rate ($/kWh)']:
+                    if col in excel_tou.columns:
+                        excel_tou[col] = excel_tou[col].str.replace('$', '').astype(float)
+                if '% of Year' in excel_tou.columns:
+                    excel_tou['% of Year'] = excel_tou['% of Year'].str.replace('%', '').astype(float) / 100
+                
+                excel_tou.to_excel(writer, sheet_name='Energy Rate Table', index=False)
+                
+                # Apply formatting
+                worksheet = writer.sheets['Energy Rate Table']
+                headers = list(excel_tou.columns)
+                for col_idx, col_name in enumerate(headers, start=1):
+                    if col_name in ['Base Rate ($/kWh)', 'Adjustment ($/kWh)', 'Total Rate ($/kWh)']:
+                        for row_idx in range(2, len(excel_tou) + 2):
+                            cell = worksheet.cell(row=row_idx, column=col_idx)
+                            cell.number_format = '_($* #,##0.0000_);_($* (#,##0.0000);_($* "-"????_);_(@_)'
+                    elif col_name == '% of Year':
+                        for row_idx in range(2, len(excel_tou) + 2):
+                            cell = worksheet.cell(row=row_idx, column=col_idx)
+                            cell.number_format = '0.0%'
             else:
                 # Create a note if no energy rates
                 no_data_df = pd.DataFrame({'Note': ['No energy rate structure found in tariff']})
@@ -318,19 +341,39 @@ def generate_energy_rates_excel(tariff_viewer, year: int = 2025) -> bytes:
         
         # Sheet 2: Weekday Energy Rates Heatmap
         weekday_df = tariff_viewer.weekday_df.copy()
-        # Format column names as hour strings
         weekday_df.columns = [f'{h:02d}:00' for h in range(24)]
         weekday_df.to_excel(writer, sheet_name='Weekday Energy Rates')
         
+        # Apply accounting format to rate values
+        worksheet = writer.sheets['Weekday Energy Rates']
+        for row_idx in range(2, len(weekday_df) + 2):
+            for col_idx in range(2, len(weekday_df.columns) + 2):
+                cell = worksheet.cell(row=row_idx, column=col_idx)
+                cell.number_format = '_($* #,##0.0000_);_($* (#,##0.0000);_($* "-"????_);_(@_)'
+        
         # Sheet 3: Weekend Energy Rates Heatmap
         weekend_df = tariff_viewer.weekend_df.copy()
-        # Format column names as hour strings
         weekend_df.columns = [f'{h:02d}:00' for h in range(24)]
         weekend_df.to_excel(writer, sheet_name='Weekend Energy Rates')
+        
+        # Apply accounting format to rate values
+        worksheet = writer.sheets['Weekend Energy Rates']
+        for row_idx in range(2, len(weekend_df) + 2):
+            for col_idx in range(2, len(weekend_df.columns) + 2):
+                cell = worksheet.cell(row=row_idx, column=col_idx)
+                cell.number_format = '_($* #,##0.0000_);_($* (#,##0.0000);_($* "-"????_);_(@_)'
         
         # Sheet 4: Full Year Energy Timeseries
         timeseries_df = generate_energy_rate_timeseries(tariff_viewer, year)
         timeseries_df.to_excel(writer, sheet_name='Energy Timeseries', index=False)
+        
+        # Apply format to energy rate column
+        if 'energy_rate_$/kWh' in timeseries_df.columns:
+            worksheet = writer.sheets['Energy Timeseries']
+            rate_col_idx = list(timeseries_df.columns).index('energy_rate_$/kWh') + 1
+            for row_idx in range(2, len(timeseries_df) + 2):
+                cell = worksheet.cell(row=row_idx, column=rate_col_idx)
+                cell.number_format = '_($* #,##0.0000_);_($* (#,##0.0000);_($* "-"????_);_(@_)'
         
         # DEMAND RATES SHEETS
         
@@ -338,7 +381,28 @@ def generate_energy_rates_excel(tariff_viewer, year: int = 2025) -> bytes:
         try:
             demand_table = tariff_viewer.create_demand_labels_table()
             if not demand_table.empty:
-                demand_table.to_excel(writer, sheet_name='Demand Rate Table', index=False)
+                # Convert formatted strings to numeric for Excel
+                excel_demand = demand_table.copy()
+                for col in ['Base Rate ($/kW)', 'Adjustment ($/kW)', 'Total Rate ($/kW)']:
+                    if col in excel_demand.columns:
+                        excel_demand[col] = excel_demand[col].str.replace('$', '').astype(float)
+                if '% of Year' in excel_demand.columns:
+                    excel_demand['% of Year'] = excel_demand['% of Year'].str.replace('%', '').astype(float) / 100
+                
+                excel_demand.to_excel(writer, sheet_name='Demand Rate Table', index=False)
+                
+                # Apply formatting
+                worksheet = writer.sheets['Demand Rate Table']
+                headers = list(excel_demand.columns)
+                for col_idx, col_name in enumerate(headers, start=1):
+                    if col_name in ['Base Rate ($/kW)', 'Adjustment ($/kW)', 'Total Rate ($/kW)']:
+                        for row_idx in range(2, len(excel_demand) + 2):
+                            cell = worksheet.cell(row=row_idx, column=col_idx)
+                            cell.number_format = '_($* #,##0.00_);_($* (#,##0.00);_($* "-"??_);_(@_)'
+                    elif col_name == '% of Year':
+                        for row_idx in range(2, len(excel_demand) + 2):
+                            cell = worksheet.cell(row=row_idx, column=col_idx)
+                            cell.number_format = '0.0%'
             else:
                 # Create a note if no demand rates
                 no_data_df = pd.DataFrame({'Note': ['No demand rate structure found in tariff']})
@@ -350,19 +414,38 @@ def generate_energy_rates_excel(tariff_viewer, year: int = 2025) -> bytes:
         
         # Sheet 6: Weekday Demand Rates Heatmap
         demand_weekday_df = tariff_viewer.demand_weekday_df.copy()
-        # Format column names as hour strings
         demand_weekday_df.columns = [f'{h:02d}:00' for h in range(24)]
         demand_weekday_df.to_excel(writer, sheet_name='Weekday Demand Rates')
         
+        # Apply accounting format to rate values
+        worksheet = writer.sheets['Weekday Demand Rates']
+        for row_idx in range(2, len(demand_weekday_df) + 2):
+            for col_idx in range(2, len(demand_weekday_df.columns) + 2):
+                cell = worksheet.cell(row=row_idx, column=col_idx)
+                cell.number_format = '_($* #,##0.00_);_($* (#,##0.00);_($* "-"??_);_(@_)'
+        
         # Sheet 7: Weekend Demand Rates Heatmap
         demand_weekend_df = tariff_viewer.demand_weekend_df.copy()
-        # Format column names as hour strings
         demand_weekend_df.columns = [f'{h:02d}:00' for h in range(24)]
         demand_weekend_df.to_excel(writer, sheet_name='Weekend Demand Rates')
+        
+        # Apply accounting format to rate values
+        worksheet = writer.sheets['Weekend Demand Rates']
+        for row_idx in range(2, len(demand_weekend_df) + 2):
+            for col_idx in range(2, len(demand_weekend_df.columns) + 2):
+                cell = worksheet.cell(row=row_idx, column=col_idx)
+                cell.number_format = '_($* #,##0.00_);_($* (#,##0.00);_($* "-"??_);_(@_)'
         
         # Sheet 8: Flat Demand Rates (Seasonal/Monthly)
         flat_demand_df = tariff_viewer.flat_demand_df.copy()
         flat_demand_df.to_excel(writer, sheet_name='Flat Demand Rates')
+        
+        # Apply accounting format to rate values
+        worksheet = writer.sheets['Flat Demand Rates']
+        for row_idx in range(2, len(flat_demand_df) + 2):
+            for col_idx in range(2, len(flat_demand_df.columns) + 2):
+                cell = worksheet.cell(row=row_idx, column=col_idx)
+                cell.number_format = '_($* #,##0.00_);_($* (#,##0.00);_($* "-"??_);_(@_)'
     
     # Get the Excel file content as bytes
     excel_data = output.getvalue()

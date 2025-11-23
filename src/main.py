@@ -23,7 +23,6 @@ from src.components.demand_rates import render_demand_rates_tab
 from src.components.flat_demand_rates import render_flat_demand_rates_tab
 from src.components.cost_calculator import render_cost_calculator_tab
 from src.components.load_generator import render_load_generator_tab
-from src.components.visualizations import display_rate_statistics
 from src.components.tariff_builder import render_tariff_builder_tab
 
 

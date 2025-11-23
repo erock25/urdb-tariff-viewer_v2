@@ -6,12 +6,13 @@ This module contains the UI components for the energy rates analysis tab.
 
 import streamlit as st
 import pandas as pd
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 from datetime import datetime
+from io import BytesIO
 
 from src.models.tariff import TariffViewer
-from src.components.visualizations import create_heatmap, display_rate_statistics
-from src.utils.styling import create_section_header_html, create_custom_divider_html
+from src.components.visualizations import create_heatmap
+from src.utils.styling import create_custom_divider_html
 from src.utils.helpers import generate_energy_rates_excel, clean_filename
 
 
@@ -63,12 +64,73 @@ def render_energy_rates_tab(tariff_viewer: TariffViewer, options: Dict[str, Any]
                         "% of Year",
                         width="small",
                     ),
+                    "Days/Year": st.column_config.NumberColumn(
+                        "Days/Year",
+                        width="small",
+                        format="%d"
+                    ),
                     "Months Present": st.column_config.TextColumn(
                         "Months Present",
                         width="large",
                     )
                 }
             )
+            
+            # Download button for the rate table
+            col1, col2, col3 = st.columns([1, 2, 1])
+            with col1:
+                # Generate Excel file for download
+                # Create a copy with numeric values for Excel export
+                excel_table = tou_table.copy()
+                
+                # Convert formatted strings to numeric values
+                # Remove $ and convert to float for rate columns
+                for col in ['Base Rate ($/kWh)', 'Adjustment ($/kWh)', 'Total Rate ($/kWh)']:
+                    if col in excel_table.columns:
+                        excel_table[col] = excel_table[col].str.replace('$', '').astype(float)
+                
+                # Remove % sign and convert to decimal for percentage column
+                if '% of Year' in excel_table.columns:
+                    excel_table['% of Year'] = excel_table['% of Year'].str.replace('%', '').astype(float) / 100
+                
+                buffer = BytesIO()
+                with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+                    excel_table.to_excel(writer, sheet_name='Energy Rate Table', index=False)
+                    
+                    # Get the worksheet to apply formatting
+                    worksheet = writer.sheets['Energy Rate Table']
+                    
+                    # Find column indices for formatting
+                    headers = list(excel_table.columns)
+                    rate_columns = ['Base Rate ($/kWh)', 'Adjustment ($/kWh)', 'Total Rate ($/kWh)']
+                    
+                    # Apply accounting format to rate columns
+                    from openpyxl.styles import numbers
+                    for col_idx, col_name in enumerate(headers, start=1):
+                        if col_name in rate_columns:
+                            for row_idx in range(2, len(excel_table) + 2):
+                                cell = worksheet.cell(row=row_idx, column=col_idx)
+                                cell.number_format = '_($* #,##0.0000_);_($* (#,##0.0000);_($* "-"??_);_(@_)'
+                        elif col_name == '% of Year':
+                            for row_idx in range(2, len(excel_table) + 2):
+                                cell = worksheet.cell(row=row_idx, column=col_idx)
+                                cell.number_format = '0.0%'
+                
+                excel_data = buffer.getvalue()
+                
+                # Create filename
+                utility_clean = clean_filename(tariff_viewer.utility_name)
+                rate_clean = clean_filename(tariff_viewer.rate_name)
+                timestamp = datetime.now().strftime("%Y%m%d")
+                filename = f"Energy_Rate_Table_{utility_clean}_{rate_clean}_{timestamp}.xlsx"
+                
+                st.download_button(
+                    label="📥 Download Table",
+                    data=excel_data,
+                    file_name=filename,
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    help="Download the current rate table as an Excel file"
+                )
         else:
             st.info("📝 **Note:** No energy rate structure found in this tariff JSON.")
             
